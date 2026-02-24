@@ -28,21 +28,22 @@ const Stack = createNativeStackNavigator();
 function App() {
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#1A237E" />
+      <StatusBar barStyle="light-content" backgroundColor="#161618" />
       <NavigationContainer>
         <Stack.Navigator
           initialRouteName="Home"
           screenOptions={{
-            headerStyle: {backgroundColor: '#1A237E'},
-            headerTintColor: '#FFFFFF',
-            headerTitleStyle: {fontWeight: '700'},
+            headerStyle: {backgroundColor: '#1422b5'},
+            headerTintColor: '#ebebeb',
+            headerTitleAlign: 'center',
+            headerTitleStyle: {fontWeight: '900', fontSize: 30},
           }}>
 
           {/* ── Home ── */}
           <Stack.Screen
             name="Home"
             component={HomeScreen}
-            options={{title: 'KYC-Xflow'}}
+            options={{title: 'KYC-X', headerBackVisible: true}}
           />
 
           {/* ── KYC Pipeline ── */}
