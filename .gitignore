@@ -10,14 +10,22 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+.pnpm-debug.log*
 
 # ================================
 # React Native / Metro
 # ================================
 .expo/
+.expo-shared/
 .metro-health-check*
 *.jsbundle
+
+# ================================
+# Environment Files
+# ================================
+.env
+.env.*
+!.env.example
 
 # ================================
 # Android
@@ -25,8 +33,8 @@ package-lock.json
 android/app/build/
 android/build/
 android/.gradle/
-android/local.properties
 android/.cxx/
+android/local.properties
 *.keystore
 !debug.keystore
 
@@ -41,7 +49,7 @@ ios/DerivedData/
 *.xcuserdata
 
 # ================================
-# IDE
+# IDE / Editors
 # ================================
 .idea/
 .vscode/
@@ -51,6 +59,7 @@ ios/DerivedData/
 # Testing
 # ================================
 coverage/
+jest-cache/
 
 # ================================
 # Fastlane
@@ -63,6 +72,5 @@ coverage/
 # ================================
 # Misc
 # ================================
-.env
-.env.*
 vendor/bundle/
+*.log
