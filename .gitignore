@@ -1,0 +1,68 @@
+# ================================
+# macOS
+# ================================
+.DS_Store
+
+# ================================
+# Node
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ================================
+# React Native / Metro
+# ================================
+.expo/
+.metro-health-check*
+*.jsbundle
+
+# ================================
+# Android
+# ================================
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/.cxx/
+*.keystore
+!debug.keystore
+
+# ================================
+# iOS
+# ================================
+ios/build/
+ios/Pods/
+ios/DerivedData/
+*.xcworkspace
+*.xcuserstate
+*.xcuserdata
+
+# ================================
+# IDE
+# ================================
+.idea/
+.vscode/
+*.iml
+
+# ================================
+# Testing
+# ================================
+coverage/
+
+# ================================
+# Fastlane
+# ================================
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# ================================
+# Misc
+# ================================
+.env
+.env.*
+vendor/bundle/
