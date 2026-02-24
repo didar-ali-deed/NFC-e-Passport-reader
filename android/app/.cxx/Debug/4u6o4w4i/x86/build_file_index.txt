@@ -1,0 +1,5 @@
+C:\Users\Didar\Desktop\NFC\node_modules\react-native-html-to-pdf\android\build\generated\source\codegen\jni\CMakeLists.txt
+C:\Users\Didar\Desktop\NFC\node_modules\react-native-safe-area-context\android\src\main\jni\CMakeLists.txt
+C:\Users\Didar\Desktop\NFC\node_modules\react-native-screens\android\src\main\jni\CMakeLists.txt
+C:\Users\Didar\Desktop\NFC\node_modules\react-native-share\android\build\generated\source\codegen\jni\CMakeLists.txt
+C:\Users\Didar\Desktop\NFC\node_modules\react-native\ReactAndroid\cmake-utils\default-app-setup\CMakeLists.txt
