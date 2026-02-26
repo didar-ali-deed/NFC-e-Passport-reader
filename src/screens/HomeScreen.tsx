@@ -67,12 +67,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
       <View style={styles.brandHeader}>
         <View style={styles.logoContainer}>
           <View style={styles.logoShield}>
-            <Text style={styles.logoX}>X</Text>
+            <Text style={styles.logoIcon}>NFC</Text>
           </View>
         </View>
-        <Text style={styles.brandName}>KYC-Xflow</Text>
+        <Text style={styles.brandName}>NFC Passport Reader</Text>
         <Text style={styles.brandTagline}>
-          NFC Passport Verification & Identity Check
+          e-Passport chip reading via ICAO 9303 BAC
         </Text>
       </View>
 
@@ -113,12 +113,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
         activeOpacity={0.85}>
         <View style={styles.mainCardContent}>
           <View style={styles.mainCardLeft}>
-            <Text style={styles.mainCardTitle}>Full KYC Verification</Text>
+            <Text style={styles.mainCardTitle}>Scan e-Passport</Text>
             <Text style={styles.mainCardSub}>
-              Complete identity check with passport NFC + liveness detection
+              Read NFC chip data: DG1, DG2, SOD with BAC authentication
             </Text>
             <View style={styles.pipelineRow}>
-              {['Consent', 'MRZ', 'NFC', 'Selfie', 'Result'].map((s, i) => (
+              {['Consent', 'MRZ', 'NFC', 'Result'].map((s, i) => (
                 <View key={s} style={styles.pipelineItem}>
                   <View style={styles.pipelineDot}>
                     <Text style={styles.pipelineNum}>{i + 1}</Text>
@@ -139,17 +139,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
       <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
-          onPress={() => requireNFC(() => navigation.navigate('MRZInput'))}
-          disabled={!nfcSupported}>
-          <View style={[styles.quickIcon, {backgroundColor: '#1A237E'}]}>
-            <Text style={styles.quickIconText}>P</Text>
-          </View>
-          <Text style={styles.quickTitle}>Passport Scan</Text>
-          <Text style={styles.quickSub}>MRZ + NFC chip read</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickCard}
           onPress={() => requireNFC(() => navigation.navigate('QuickScan'))}
           disabled={!nfcSupported}>
           <View style={[styles.quickIcon, {backgroundColor: '#0D47A1'}]}>
@@ -158,9 +147,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
           <Text style={styles.quickTitle}>NFC Tag Scan</Text>
           <Text style={styles.quickSub}>Read any NFC tag UID</Text>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
           onPress={() => navigation.navigate('Dashboard')}>
@@ -170,7 +157,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
           <Text style={styles.quickTitle}>Dashboard</Text>
           <Text style={styles.quickSub}>Stats & analytics</Text>
         </TouchableOpacity>
+      </View>
 
+      <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
           onPress={() => navigation.navigate('History')}>
@@ -178,11 +167,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
             <Text style={styles.quickIconText}>H</Text>
           </View>
           <Text style={styles.quickTitle}>History</Text>
-          <Text style={styles.quickSub}>Past verifications</Text>
+          <Text style={styles.quickSub}>Past scans</Text>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
           onPress={() => navigation.navigate('About')}>
@@ -190,20 +177,19 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
             <Text style={styles.quickIconText}>i</Text>
           </View>
           <Text style={styles.quickTitle}>About</Text>
-          <Text style={styles.quickSub}>App info & settings</Text>
+          <Text style={styles.quickSub}>App info & standards</Text>
         </TouchableOpacity>
-        <View style={{flex: 1}} />
       </View>
 
       {/* How it works */}
       <View style={styles.howCard}>
-        <Text style={styles.howTitle}>How KYC-Xflow works</Text>
+        <Text style={styles.howTitle}>How it works</Text>
         {[
-          {num: '1', text: 'Scan MRZ zone on your passport'},
-          {num: '2', text: 'NFC reads the encrypted passport chip'},
-          {num: '3', text: 'Live selfie checks you are a real person'},
-          {num: '4', text: 'AI matches your face with passport photo'},
-          {num: '5', text: 'Instant KYC verification result'},
+          {num: '1', text: 'Accept Terms & Conditions'},
+          {num: '2', text: 'Scan MRZ zone on your passport (camera or manual)'},
+          {num: '3', text: 'Tap phone on passport — BAC key unlocks the NFC chip'},
+          {num: '4', text: 'App reads DG1 (personal data), DG2 (face), SOD (signatures)'},
+          {num: '5', text: 'Chip authentication & SOD signature are verified'},
         ].map(item => (
           <View key={item.num} style={styles.howRow}>
             <View style={styles.howNum}>
@@ -215,7 +201,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
       </View>
 
       <Text style={styles.footer}>
-        KYC-Xflow v1.0 | ICAO 9303 compliant | GDPR ready
+        NFC Passport Reader v1.0 | ICAO 9303 compliant | ISO 14443-4
       </Text>
     </ScrollView>
   );
@@ -227,8 +213,8 @@ const styles = StyleSheet.create({
   brandHeader: {alignItems: 'center', marginBottom: 20, paddingTop: 8},
   logoContainer: {marginBottom: 10},
   logoShield: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     borderRadius: 16,
     backgroundColor: '#1A237E',
     justifyContent: 'center',
@@ -239,8 +225,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
   },
-  logoX: {color: '#fff', fontSize: 28, fontWeight: '900'},
-  brandName: {fontSize: 28, fontWeight: '900', color: '#1A237E', letterSpacing: 1},
+  logoIcon: {color: '#fff', fontSize: 14, fontWeight: '900', letterSpacing: 1},
+  brandName: {fontSize: 24, fontWeight: '900', color: '#1A237E', letterSpacing: 0.5},
   brandTagline: {fontSize: 13, color: '#666', marginTop: 4, textAlign: 'center'},
 
   nfcChip: {
@@ -263,12 +249,12 @@ const styles = StyleSheet.create({
   nfcChipRefresh: {fontSize: 10, color: '#999'},
 
   mainCard: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#1A237E',
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
     elevation: 4,
-    shadowColor: '#B71C1C',
+    shadowColor: '#1A237E',
     shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -276,19 +262,19 @@ const styles = StyleSheet.create({
   mainCardContent: {flexDirection: 'row', alignItems: 'center'},
   mainCardLeft: {flex: 1},
   mainCardTitle: {fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 6},
-  mainCardSub: {fontSize: 12, color: '#FFCDD2', lineHeight: 17, marginBottom: 12},
-  pipelineRow: {flexDirection: 'row', gap: 4},
+  mainCardSub: {fontSize: 12, color: '#C5CAE9', lineHeight: 17, marginBottom: 12},
+  pipelineRow: {flexDirection: 'row', gap: 6},
   pipelineItem: {alignItems: 'center'},
   pipelineDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: 'rgba(255,255,255,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   pipelineNum: {fontSize: 9, fontWeight: '700', color: '#fff'},
-  pipelineLabel: {fontSize: 8, color: '#FFCDD2', marginTop: 2},
+  pipelineLabel: {fontSize: 8, color: '#C5CAE9', marginTop: 2},
   mainCardArrow: {
     width: 44,
     height: 44,

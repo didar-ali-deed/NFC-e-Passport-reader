@@ -1,8 +1,8 @@
 /**
- * SessionService — Step 1
- * Manages KYC session lifecycle: creation, consent, audit logging, and history.
+ * SessionService
+ * Manages NFC scan session lifecycle: creation, consent, audit logging, and history.
  */
-import type {KYCSession, KYCStatus, AuditLog, AuditStep, KYCDecision} from '../types/kyc';
+import type {NFCSession, NFCSessionStatus, AuditLog, AuditStep, PassportScanResult} from '../types/kyc';
 
 export interface HistoryEntry {
   sessionId: string;
@@ -10,25 +10,25 @@ export interface HistoryEntry {
   name: string;
   documentNumber: string;
   nationality: string;
-  result: 'VERIFIED' | 'REJECTED';
+  result: 'SUCCESS' | 'FAILED';
   reason: string;
 }
 
 function generateSessionId(): string {
   const now = new Date();
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `KYC_${now.getFullYear()}_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `NFC_${now.getFullYear()}_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
 class SessionService {
-  private currentSession: KYCSession | null = null;
+  private currentSession: NFCSession | null = null;
   private auditLog: AuditLog | null = null;
   private history: HistoryEntry[] = [];
 
   /**
-   * Create a new KYC session (called when user taps "Start KYC")
+   * Create a new NFC scan session (called when user taps "Start Scan")
    */
-  createSession(): KYCSession {
+  createSession(): NFCSession {
     const sessionId = generateSessionId();
     this.currentSession = {
       sessionId,
@@ -46,25 +46,25 @@ class SessionService {
   }
 
   /**
-   * Record user consent (GDPR requirement)
+   * Record user consent
    */
-  recordConsent(): KYCSession {
+  recordConsent(): NFCSession {
     if (!this.currentSession) {
       throw new Error('No active session. Call createSession() first.');
     }
     this.currentSession.consentGiven = true;
     this.currentSession.status = 'consent';
-    this.logStep('consent', 'pass', 'User gave explicit consent');
+    this.logStep('consent', 'pass', 'User accepted terms and conditions');
     return this.currentSession;
   }
 
-  updateStatus(status: KYCStatus): void {
+  updateStatus(status: NFCSessionStatus): void {
     if (this.currentSession) {
       this.currentSession.status = status;
     }
   }
 
-  getSession(): KYCSession | null {
+  getSession(): NFCSession | null {
     return this.currentSession;
   }
 
@@ -84,22 +84,22 @@ class SessionService {
   }
 
   /**
-   * Add a completed KYC result to history
+   * Add a completed scan result to history
    */
   addToHistory(
-    decision: KYCDecision,
+    scanResult: PassportScanResult,
     name: string,
     documentNumber: string,
     nationality: string,
   ): void {
     this.history.unshift({
-      sessionId: decision.sessionId,
-      timestamp: decision.timestamp,
+      sessionId: scanResult.sessionId,
+      timestamp: scanResult.timestamp,
       name,
       documentNumber: documentNumber.replace(/.(?=.{3})/g, '*'),
       nationality,
-      result: decision.finalStatus,
-      reason: decision.reason,
+      result: scanResult.status,
+      reason: scanResult.reason,
     });
     // Keep last 50 entries
     if (this.history.length > 50) {

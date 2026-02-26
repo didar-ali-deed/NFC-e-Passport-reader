@@ -42,7 +42,7 @@ const HistoryScreen: React.FC = () => {
   };
 
   const renderItem = ({item}: {item: HistoryEntry}) => {
-    const isVerified = item.result === 'VERIFIED';
+    const isVerified = item.result === 'SUCCESS';
     const date = new Date(item.timestamp);
     return (
       <View style={styles.card}>
@@ -91,7 +91,7 @@ const HistoryScreen: React.FC = () => {
         <>
           <View style={styles.topBar}>
             <Text style={styles.countText}>
-              {history.length} verification{history.length !== 1 ? 's' : ''}
+              {history.length} scan{history.length !== 1 ? 's' : ''}
             </Text>
             <TouchableOpacity onPress={handleClear} style={styles.clearBtn}>
               <Text style={styles.clearBtnText}>Clear All</Text>
@@ -107,9 +107,9 @@ const HistoryScreen: React.FC = () => {
       ) : (
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>H</Text>
-          <Text style={styles.emptyTitle}>No Verifications Yet</Text>
+          <Text style={styles.emptyTitle}>No Scans Yet</Text>
           <Text style={styles.emptySub}>
-            Complete a KYC verification to see it here.{'\n'}
+            Complete a passport NFC scan to see it here.{'\n'}
             History is stored in memory for this session.
           </Text>
         </View>

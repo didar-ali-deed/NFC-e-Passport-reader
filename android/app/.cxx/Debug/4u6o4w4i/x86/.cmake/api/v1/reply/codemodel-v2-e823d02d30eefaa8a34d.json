@@ -114,7 +114,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "appmodules::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-appmodules-Debug-263a809c7f81159698be.json",
+					"jsonFile" : "target-appmodules-Debug-4b0363229944f6767bcd.json",
 					"name" : "appmodules",
 					"projectIndex" : 0
 				},
@@ -135,14 +135,14 @@
 				{
 					"directoryIndex" : 3,
 					"id" : "react_codegen_rnscreens::@25bcbd507e98d3a854ad",
-					"jsonFile" : "target-react_codegen_rnscreens-Debug-6cf7ae519bb3a5878661.json",
+					"jsonFile" : "target-react_codegen_rnscreens-Debug-2a819916caaf20c6452c.json",
 					"name" : "react_codegen_rnscreens",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 2,
 					"id" : "react_codegen_safeareacontext::@7984cd80db47aa7b952a",
-					"jsonFile" : "target-react_codegen_safeareacontext-Debug-74b59d5b78aa4e132cc5.json",
+					"jsonFile" : "target-react_codegen_safeareacontext-Debug-31443b820dbf09c0cb5e.json",
 					"name" : "react_codegen_safeareacontext",
 					"projectIndex" : 0
 				}
@@ -152,7 +152,7 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "C:/Users/Didar/Desktop/NFC/android/app/.cxx/Debug/4u6o4w4i/x86_64",
+		"build" : "C:/Users/Didar/Desktop/NFC/android/app/.cxx/Debug/4u6o4w4i/x86",
 		"source" : "C:/Users/Didar/Desktop/NFC/node_modules/react-native/ReactAndroid/cmake-utils/default-app-setup"
 	},
 	"version" : 

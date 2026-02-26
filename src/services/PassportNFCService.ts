@@ -18,9 +18,10 @@ import type {MRZScanResult, PassportChipData} from '../types/kyc';
 const SELECT_AID = [
   0x00, 0xa4, 0x04, 0x0c, 0x07, 0xa0, 0x00, 0x00, 0x02, 0x47, 0x10, 0x01,
 ];
-const SELECT_EF_DG1 = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x01];
-const SELECT_EF_DG2 = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x02];
-const SELECT_EF_SOD = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x1d];
+const SELECT_EF_DG1  = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x01];
+const SELECT_EF_DG2  = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x02];
+const SELECT_EF_DG14 = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x0e];
+const SELECT_EF_SOD  = [0x00, 0xa4, 0x02, 0x0c, 0x02, 0x01, 0x1d];
 const READ_BINARY = (offset: number, length: number) => [
   0x00, 0xb0, (offset >> 8) & 0xff, offset & 0xff, length,
 ];
@@ -107,6 +108,14 @@ class PassportNFCService {
         }
       } catch (sodErr: any) {
         console.warn('SOD read failed:', sodErr?.message);
+      }
+
+      // ── Step 6: Chip Authentication (CA) via DG14 ECDH ──
+      onStep?.('chip_auth');
+      try {
+        result.chipAuthDone = await this.performChipAuthentication();
+      } catch (caErr: any) {
+        console.warn('[CA] Chip Authentication failed:', caErr?.message);
       }
 
       return result;
@@ -345,6 +354,110 @@ class PassportNFCService {
     const dd = yymmdd.substring(4, 6);
     const year = yy >= 0 && yy <= 50 ? 2000 + yy : 1900 + yy;
     return `${dd}/${mm}/${year}`;
+  }
+
+  // ── Chip Authentication helpers ────────────────────────────────────────
+
+  /**
+   * Scan DG14 SecurityInfos for an EC public key in SubjectPublicKeyInfo.
+   * The uncompressed EC point is inside a BIT STRING: 03 [len] 00 04 [x][y].
+   * P-256 → 65 bytes, P-384 → 97 bytes, P-521 → 133 bytes.
+   */
+  private parseECPublicKeyFromDG14(data: number[]): number[] | null {
+    for (let i = 0; i < data.length - 4; i++) {
+      if (data[i] !== 0x03) continue;
+      const lb = data[i + 1];
+      let len: number;
+      let skip: number;
+      if (lb < 0x80) {
+        len = lb;
+        skip = 2;
+      } else if (lb === 0x81) {
+        len = data[i + 2] ?? 0;
+        skip = 3;
+      } else {
+        continue;
+      }
+      const start = i + skip;
+      if (start + len > data.length) continue;
+      // BIT STRING content: 00 04 [point bytes]
+      if (data[start] !== 0x00 || data[start + 1] !== 0x04) continue;
+      const pointLen = len - 1; // subtract the unused-bits byte (0x00)
+      if (pointLen === 65 || pointLen === 97 || pointLen === 133) {
+        return data.slice(start + 1, start + 1 + pointLen); // 04 [x][y]
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Chip Authentication (ICAO 9303 Part 11 §6.1):
+   * 1. Read DG14 → chip's ECDH public key
+   * 2. Generate ephemeral key pair via Web Crypto
+   * 3. Send GENERAL AUTHENTICATE with our ephemeral public key
+   * 4. SW=9000 → chip holds the matching private key → authentic
+   */
+  private async performChipAuthentication(): Promise<boolean> {
+    try {
+      const dg14Data = await this.readDataGroupSM(SELECT_EF_DG14);
+      if (dg14Data.length < 10) return false;
+
+      const chipPubKeyBytes = this.parseECPublicKeyFromDG14(dg14Data);
+      if (!chipPubKeyBytes) {
+        console.warn('[CA] No EC public key found in DG14');
+        return false;
+      }
+
+      // Determine curve from key length
+      const namedCurve =
+        chipPubKeyBytes.length === 65 ? 'P-256' :
+        chipPubKeyBytes.length === 97 ? 'P-384' :
+        chipPubKeyBytes.length === 133 ? 'P-521' : null;
+      if (!namedCurve) return false;
+
+      const subtle = (globalThis as any).crypto?.subtle;
+      if (!subtle) {
+        console.warn('[CA] Web Crypto not available');
+        return false;
+      }
+
+      // Import chip's public key
+      await subtle.importKey(
+        'raw',
+        new Uint8Array(chipPubKeyBytes),
+        {name: 'ECDH', namedCurve},
+        false,
+        [],
+      );
+
+      // Generate our ephemeral key pair
+      const ephemeral = await subtle.generateKey(
+        {name: 'ECDH', namedCurve},
+        true,
+        ['deriveBits'],
+      );
+
+      // Export our ephemeral public key as raw bytes
+      const pkTRaw = await subtle.exportKey('raw', ephemeral.publicKey);
+      const pkT = Array.from(new Uint8Array(pkTRaw as ArrayBuffer));
+
+      // Build GENERAL AUTHENTICATE APDU:
+      // 7C [len] 80 [len] [pkT]   (Dynamic Authentication Data object)
+      const encLen = (n: number): number[] =>
+        n < 0x80 ? [n] :
+        n < 0x100 ? [0x81, n] :
+        [0x82, (n >> 8) & 0xff, n & 0xff];
+
+      const inner = [0x80, ...encLen(pkT.length), ...pkT];
+      const outer = [0x7c, ...encLen(inner.length), ...inner];
+      const gaApdu = [0x00, 0x86, 0x00, 0x00, ...encLen(outer.length), ...outer, 0x00];
+
+      const gaResp = await this.transceiveSM(gaApdu);
+      return gaResp.sw[0] === 0x90 && gaResp.sw[1] === 0x00;
+    } catch (err: any) {
+      console.warn('[CA]', err?.message);
+      return false;
+    }
   }
 
   async cleanup(): Promise<void> {

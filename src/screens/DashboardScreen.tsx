@@ -14,8 +14,8 @@ const DashboardScreen: React.FC = () => {
   }, [isFocused]);
 
   const total = history.length;
-  const verified = history.filter(h => h.result === 'VERIFIED').length;
-  const rejected = history.filter(h => h.result === 'REJECTED').length;
+  const verified = history.filter(h => h.result === 'SUCCESS').length;
+  const rejected = history.filter(h => h.result === 'FAILED').length;
   const passRate = total > 0 ? Math.round((verified / total) * 100) : 0;
 
   // Nationality breakdown
@@ -56,11 +56,11 @@ const DashboardScreen: React.FC = () => {
         </View>
         <View style={[styles.statCard, {backgroundColor: '#E8F5E9'}]}>
           <Text style={[styles.statNumber, {color: '#2E7D32'}]}>{verified}</Text>
-          <Text style={styles.statLabel}>Verified</Text>
+          <Text style={styles.statLabel}>Success</Text>
         </View>
         <View style={[styles.statCard, {backgroundColor: '#FFEBEE'}]}>
           <Text style={[styles.statNumber, {color: '#C62828'}]}>{rejected}</Text>
-          <Text style={styles.statLabel}>Rejected</Text>
+          <Text style={styles.statLabel}>Failed</Text>
         </View>
       </View>
 
@@ -83,7 +83,7 @@ const DashboardScreen: React.FC = () => {
         </View>
         {total === 0 && (
           <Text style={styles.emptyHint}>
-            Complete a KYC verification to see statistics here.
+            Complete a passport NFC scan to see statistics here.
           </Text>
         )}
       </View>
@@ -118,12 +118,12 @@ const DashboardScreen: React.FC = () => {
         <View style={styles.breakdownRow}>
           <View style={styles.breakdownItem}>
             <View style={[styles.breakdownDot, {backgroundColor: '#4CAF50'}]} />
-            <Text style={styles.breakdownLabel}>Verified</Text>
+            <Text style={styles.breakdownLabel}>Success</Text>
             <Text style={styles.breakdownValue}>{verified}</Text>
           </View>
           <View style={styles.breakdownItem}>
             <View style={[styles.breakdownDot, {backgroundColor: '#F44336'}]} />
-            <Text style={styles.breakdownLabel}>Rejected</Text>
+            <Text style={styles.breakdownLabel}>Failed</Text>
             <Text style={styles.breakdownValue}>{rejected}</Text>
           </View>
         </View>

@@ -24,6 +24,7 @@ type NFCStep =
   | 'reading_dg1'
   | 'reading_dg2'
   | 'reading_sod'
+  | 'chip_auth'
   | 'verifying'
   | 'done'
   | 'error';
@@ -35,6 +36,7 @@ const STEP_LABELS: Record<NFCStep, string> = {
   reading_dg1: 'Reading personal data (DG1)...',
   reading_dg2: 'Reading face image (DG2)...',
   reading_sod: 'Reading security data (SOD)...',
+  chip_auth: 'Chip Authentication (CA)...',
   verifying: 'Verifying digital signatures...',
   done: 'Passport read complete!',
   error: 'Read failed',
@@ -80,7 +82,7 @@ const NFCScanScreen: React.FC<Props> = ({navigation, route}) => {
         mrzData,
         (s: string) => {
           if (s === 'selecting_app' || s === 'bac_auth' || s === 'reading_dg1' ||
-              s === 'reading_dg2' || s === 'reading_sod') {
+              s === 'reading_dg2' || s === 'reading_sod' || s === 'chip_auth') {
             setStep(s as NFCStep);
           }
         },
@@ -94,13 +96,13 @@ const NFCScanScreen: React.FC<Props> = ({navigation, route}) => {
       SessionService.logStep(
         'nfc_complete',
         result.isAuthenticated ? 'pass' : 'fail',
-        `Auth: ${result.isAuthenticated}, SOD: ${result.sodVerified}`,
+        `Auth: ${result.isAuthenticated}, SOD: ${result.sodVerified}, CA: ${result.chipAuthDone}`,
       );
       SessionService.updateStatus('nfc_read');
 
-      // Navigate to selfie capture
+      // Navigate to passport result screen
       setTimeout(() => {
-        navigation.navigate('SelfieScan', {passportData: result, sessionId});
+        navigation.navigate('PassportResult', {passportData: result, sessionId});
       }, 1200);
     } catch (err: any) {
       setStep('error');
@@ -123,7 +125,7 @@ const NFCScanScreen: React.FC<Props> = ({navigation, route}) => {
 
   const steps: NFCStep[] = [
     'selecting_app', 'bac_auth', 'reading_dg1',
-    'reading_dg2', 'reading_sod', 'verifying',
+    'reading_dg2', 'reading_sod', 'chip_auth', 'verifying',
   ];
   const stepOrder = steps.indexOf(step);
 

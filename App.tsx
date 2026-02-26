@@ -4,21 +4,20 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
-// Original screens
+// Main screens
 import HomeScreen from './src/screens/HomeScreen';
 import MRZInputScreen from './src/screens/MRZInputScreen';
 import ScanCardScreen from './src/screens/ScanCardScreen';
 import ResultScreen from './src/screens/ResultScreen';
 import QuickScanScreen from './src/screens/QuickScanScreen';
 
-// KYC pipeline screens
+// NFC pipeline screens
 import ConsentScreen from './src/screens/ConsentScreen';
 import MRZScannerScreen from './src/screens/MRZScannerScreen';
 import NFCScanScreen from './src/screens/NFCScanScreen';
-import SelfieScreen from './src/screens/SelfieScreen';
-import KYCResultScreen from './src/screens/KYCResultScreen';
+import PassportResultScreen from './src/screens/PassportResultScreen';
 
-// New feature screens
+// Utility screens
 import HistoryScreen from './src/screens/HistoryScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -36,21 +35,21 @@ function App() {
             headerStyle: {backgroundColor: '#1422b5'},
             headerTintColor: '#ebebeb',
             headerTitleAlign: 'center',
-            headerTitleStyle: {fontWeight: '900', fontSize: 30},
+            headerTitleStyle: {fontWeight: '900', fontSize: 28},
           }}>
 
-          {/* ── Home ── */}
+          {/* Home */}
           <Stack.Screen
             name="Home"
             component={HomeScreen}
-            options={{title: 'KYC-X', headerBackVisible: true}}
+            options={{title: 'NFC Passport'}}
           />
 
-          {/* ── KYC Pipeline ── */}
+          {/* NFC Scan Pipeline */}
           <Stack.Screen
             name="Consent"
             component={ConsentScreen}
-            options={{title: 'Step 1 — Consent', headerBackVisible: false}}
+            options={{title: 'Step 1 — Terms & Conditions', headerBackVisible: false}}
           />
           <Stack.Screen
             name="MRZScanner"
@@ -63,17 +62,12 @@ function App() {
             options={{title: 'Step 3 — NFC Read', headerBackVisible: false}}
           />
           <Stack.Screen
-            name="SelfieScan"
-            component={SelfieScreen}
-            options={{title: 'Step 4 — Liveness', headerBackVisible: false}}
-          />
-          <Stack.Screen
-            name="KYCResult"
-            component={KYCResultScreen}
-            options={{title: 'KYC Result', headerBackVisible: false}}
+            name="PassportResult"
+            component={PassportResultScreen}
+            options={{title: 'Passport Data', headerBackVisible: false}}
           />
 
-          {/* ── Quick Tools ── */}
+          {/* Quick Tools */}
           <Stack.Screen
             name="MRZInput"
             component={MRZInputScreen}
@@ -95,16 +89,16 @@ function App() {
             options={{title: 'Quick NFC Scan'}}
           />
 
-          {/* ── New Feature Screens ── */}
+          {/* Utility Screens */}
           <Stack.Screen
             name="History"
             component={HistoryScreen}
-            options={{title: 'Verification History'}}
+            options={{title: 'Scan History'}}
           />
           <Stack.Screen
             name="About"
             component={AboutScreen}
-            options={{title: 'About KYC-Xflow'}}
+            options={{title: 'About'}}
           />
           <Stack.Screen
             name="Dashboard"

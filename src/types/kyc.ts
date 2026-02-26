@@ -1,19 +1,17 @@
-export interface KYCSession {
+export interface NFCSession {
   sessionId: string;
   consentGiven: boolean;
   timestamp: string;
-  status: KYCStatus;
+  status: NFCSessionStatus;
 }
 
-export type KYCStatus =
+export type NFCSessionStatus =
   | 'pending'
   | 'consent'
   | 'mrz_scan'
   | 'nfc_read'
-  | 'liveness'
-  | 'face_match'
-  | 'verified'
-  | 'rejected';
+  | 'complete'
+  | 'failed';
 
 export interface MRZScanResult {
   passportNumber: string;
@@ -40,27 +38,15 @@ export interface PassportChipData {
   faceImageBase64: string | null;
   isAuthenticated: boolean;
   sodVerified: boolean;
-  chipAuthDone: boolean;
+  chipAuthDone: boolean | null; // null = not supported / not attempted
 }
 
-export interface LivenessResult {
-  passed: boolean;
-  score: number;
-  provider: string;
-}
-
-export interface FaceMatchResult {
-  matched: boolean;
-  score: number;
-  threshold: number;
-}
-
-export interface KYCDecision {
+export interface PassportScanResult {
   sessionId: string;
   passportAuthentic: boolean;
-  livenessPassed: boolean;
-  faceMatched: boolean;
-  finalStatus: 'VERIFIED' | 'REJECTED';
+  sodVerified: boolean;
+  chipAuthDone: boolean | null;
+  status: 'SUCCESS' | 'FAILED';
   reason: string;
   timestamp: string;
 }
@@ -68,7 +54,7 @@ export interface KYCDecision {
 export interface AuditLog {
   sessionId: string;
   steps: AuditStep[];
-  finalDecision: KYCDecision | null;
+  finalDecision: PassportScanResult | null;
 }
 
 export interface AuditStep {

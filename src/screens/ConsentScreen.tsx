@@ -1,5 +1,5 @@
 /**
- * Step 1: User Consent & Session Creation
+ * Step 1: User Consent — Terms & Conditions
  */
 import React, {useState} from 'react';
 import {
@@ -19,11 +19,11 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
   const [agreed, setAgreed] = useState(false);
   const [dataProcessing, setDataProcessing] = useState(false);
 
-  const handleStartKYC = () => {
+  const handleStart = () => {
     if (!agreed || !dataProcessing) {
       Alert.alert(
         'Consent Required',
-        'You must agree to both consent items to proceed.',
+        'You must agree to both items to proceed.',
       );
       return;
     }
@@ -38,19 +38,20 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerIcon}>Xflow</Text>
-        <Text style={styles.title}>Identity Verification</Text>
-        <Text style={styles.subtitle}>KYC-Xflow | NFC Passport + Liveness</Text>
+        <Text style={styles.headerIcon}>NFC</Text>
+        <Text style={styles.title}>Terms & Conditions</Text>
+        <Text style={styles.subtitle}>NFC Passport Reader | ICAO 9303</Text>
       </View>
 
-      {/* What we collect */}
+      {/* What we read */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What we verify</Text>
+        <Text style={styles.cardTitle}>What this app reads</Text>
         {[
-          {icon: '📄', text: 'Your passport MRZ (Machine Readable Zone)'},
-          {icon: '🔐', text: 'NFC chip data from your e-Passport'},
-          {icon: '📸', text: 'A live selfie for liveness detection'},
-          {icon: '✅', text: 'Face match between passport and selfie'},
+          {icon: '📄', text: 'Passport MRZ (Machine Readable Zone) — used to generate BAC key'},
+          {icon: '🔐', text: 'NFC chip data via Basic Access Control (BAC)'},
+          {icon: '👤', text: 'DG1 — personal data (name, DOB, nationality, document number)'},
+          {icon: '🖼', text: 'DG2 — biometric face image stored on the chip'},
+          {icon: '🔏', text: 'SOD — Document Security Object (digital signatures)'},
         ].map((item, i) => (
           <View key={i} style={styles.bulletRow}>
             <Text style={styles.bulletIcon}>{item.icon}</Text>
@@ -59,20 +60,17 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
         ))}
       </View>
 
-      {/* Privacy policy */}
+      {/* Data policy */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Privacy & Data Policy</Text>
+        <Text style={styles.cardTitle}>Data Policy</Text>
         <Text style={styles.bodyText}>
-          Your biometric data (face image, passport data) is processed
-          exclusively for identity verification purposes. We do{' '}
-          <Text style={styles.bold}>NOT</Text> store raw biometric data after
-          verification is complete.{'\n\n'}
-          Only the verification result (VERIFIED / REJECTED) and a session
-          audit log are retained, encrypted with AES-256, in compliance with
-          GDPR and Pakistan's Data Protection framework.{'\n\n'}
-          Your MRZ data and NFC keys exist{' '}
-          <Text style={styles.bold}>only in RAM</Text> and are destroyed
-          immediately after the NFC session ends.
+          All passport data is processed <Text style={styles.bold}>exclusively in device RAM</Text>{' '}
+          during this session. No passport data, face images, or NFC keys are stored
+          to disk or transmitted to any server.{'\n\n'}
+          MRZ-derived BAC keys and NFC session data are destroyed immediately after
+          the chip reading completes.{'\n\n'}
+          Only an anonymised scan log (session ID, timestamp, pass/fail status) is
+          retained in memory for the duration of the app session.
         </Text>
       </View>
 
@@ -81,11 +79,11 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
         <View style={styles.consentRow}>
           <View style={styles.consentTextBox}>
             <Text style={styles.consentLabel}>
-              I consent to identity verification
+              I consent to NFC passport reading
             </Text>
             <Text style={styles.consentSub}>
-              I agree to have my identity verified using my passport and
-              biometric data for KYC purposes.
+              I agree to have my passport chip read using the above-listed data groups
+              for the purposes of identity document verification.
             </Text>
           </View>
           <Switch
@@ -99,11 +97,11 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
         <View style={[styles.consentRow, {marginTop: 16}]}>
           <View style={styles.consentTextBox}>
             <Text style={styles.consentLabel}>
-              I consent to data processing
+              I consent to temporary data processing
             </Text>
             <Text style={styles.consentSub}>
-              I understand my biometric data will be temporarily processed and
-              not stored permanently.
+              I understand that passport data will be temporarily processed
+              in device memory and not stored permanently.
             </Text>
           </View>
           <Switch
@@ -117,12 +115,12 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
 
       {/* Steps overview */}
       <View style={styles.stepsCard}>
-        <Text style={styles.cardTitle}>Verification Steps</Text>
+        <Text style={styles.cardTitle}>Scan Steps</Text>
         {[
-          'Scan MRZ on your passport',
-          'Tap phone on passport for NFC read',
-          'Take a live selfie',
-          'Receive instant KYC result',
+          'Scan MRZ zone on your passport (camera or manual entry)',
+          'Tap phone on passport — BAC unlocks the NFC chip',
+          'App reads DG1, DG2, and SOD from the chip',
+          'Chip authentication and signature verification',
         ].map((step, i) => (
           <View key={i} style={styles.stepRow}>
             <View style={styles.stepNum}>
@@ -139,14 +137,14 @@ const ConsentScreen: React.FC<Props> = ({navigation}) => {
           styles.startButton,
           (!agreed || !dataProcessing) && styles.disabledButton,
         ]}
-        onPress={handleStartKYC}
+        onPress={handleStart}
         disabled={!agreed || !dataProcessing}>
-        <Text style={styles.startButtonText}>Start KYC Verification</Text>
+        <Text style={styles.startButtonText}>Start Passport Scan</Text>
       </TouchableOpacity>
 
       <Text style={styles.footerText}>
-        Session ID will be generated on start. All data processed under
-        ICAO 9303 and GDPR guidelines.
+        A session ID is generated on start. All data processed under ICAO 9303 and
+        ISO 14443-4 protocols.
       </Text>
     </ScrollView>
   );
@@ -156,7 +154,7 @@ const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#F5F7FA'},
   content: {padding: 20, paddingBottom: 40},
   header: {alignItems: 'center', marginBottom: 24, paddingTop: 10},
-  headerIcon: {fontSize: 48, marginBottom: 8},
+  headerIcon: {fontSize: 36, fontWeight: '900', color: '#1A237E', marginBottom: 8},
   title: {fontSize: 26, fontWeight: 'bold', color: '#1A237E'},
   subtitle: {fontSize: 14, color: '#666', marginTop: 4},
   card: {

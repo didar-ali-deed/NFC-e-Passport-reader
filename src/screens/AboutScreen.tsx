@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity} from 'react-native';
+import {View, Text, StyleSheet, ScrollView} from 'react-native';
 
 const AboutScreen: React.FC = () => {
   return (
@@ -7,9 +7,9 @@ const AboutScreen: React.FC = () => {
       {/* Logo */}
       <View style={styles.logoSection}>
         <View style={styles.logoShield}>
-          <Text style={styles.logoX}>X</Text>
+          <Text style={styles.logoIcon}>NFC</Text>
         </View>
-        <Text style={styles.appName}>KYC-Xflow</Text>
+        <Text style={styles.appName}>NFC Passport Reader</Text>
         <Text style={styles.version}>Version 1.0.0</Text>
       </View>
 
@@ -17,10 +17,11 @@ const AboutScreen: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>About</Text>
         <Text style={styles.bodyText}>
-          KYC-Xflow is a mobile identity verification app that reads NFC-enabled
-          passports following the ICAO 9303 international standard. It performs
-          full KYC (Know Your Customer) verification through passport chip reading,
-          liveness detection, and face matching.
+          NFC Passport Reader is a mobile app that reads NFC-enabled e-Passports
+          following the ICAO 9303 international standard. It uses Basic Access
+          Control (BAC) to securely authenticate and extract passport chip data
+          including personal information (DG1), biometric face image (DG2), and
+          the Document Security Object (SOD) for signature verification.
         </Text>
       </View>
 
@@ -32,8 +33,8 @@ const AboutScreen: React.FC = () => {
           ['NFC Protocol', 'ISO 14443-4 (IsoDep)'],
           ['Auth Protocol', 'ICAO 9303 BAC + Secure Messaging'],
           ['Cryptography', '3DES-CBC, SHA-1, ISO 9797-1 MAC'],
-          ['Camera/OCR', 'Vision Camera + ML Kit'],
-          ['Liveness', 'AI-based face detection'],
+          ['Camera/OCR', 'Vision Camera + ML Kit (MRZ scan)'],
+          ['NFC Library', 'react-native-nfc-manager'],
         ].map(([label, value]) => (
           <View key={label} style={styles.techRow}>
             <Text style={styles.techLabel}>{label}</Text>
@@ -47,12 +48,12 @@ const AboutScreen: React.FC = () => {
         <Text style={styles.cardTitle}>Compliance</Text>
         {[
           'ICAO 9303 (Machine Readable Travel Documents)',
-          'ISO 14443-4 (NFC Proximity Cards)',
-          'GDPR (General Data Protection Regulation)',
+          'ISO 14443-4 (NFC Proximity Cards — IsoDep)',
           'ISO 9797-1 (Message Authentication Codes)',
+          'BSI TR-03110 (BAC / Secure Messaging)',
         ].map((std, i) => (
           <View key={i} style={styles.stdRow}>
-            <Text style={styles.stdCheck}>*</Text>
+            <Text style={styles.stdCheck}>✓</Text>
             <Text style={styles.stdText}>{std}</Text>
           </View>
         ))}
@@ -62,11 +63,12 @@ const AboutScreen: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Security & Privacy</Text>
         <Text style={styles.bodyText}>
-          All biometric data (face images, passport data) is processed in memory
-          only and never stored permanently. MRZ keys and NFC session data are
-          destroyed immediately after the verification session ends.{'\n\n'}
-          Only the verification result (VERIFIED / REJECTED) and an encrypted audit
-          log are retained.
+          All passport data (DG1, DG2, SOD) is processed in device RAM only and
+          never written to disk or transmitted to any external server.{'\n\n'}
+          MRZ-derived BAC keys and NFC Secure Messaging session keys are destroyed
+          immediately after the chip reading session ends.{'\n\n'}
+          Only a minimal scan audit log (session ID, timestamp, pass/fail result)
+          is retained in memory for the duration of the app session.
         </Text>
       </View>
 
@@ -83,7 +85,7 @@ const AboutScreen: React.FC = () => {
       </View>
 
       <Text style={styles.footer}>
-        KYC-Xflow | ICAO 9303 Compliant | GDPR Ready
+        NFC Passport Reader | ICAO 9303 | ISO 14443-4
       </Text>
     </ScrollView>
   );
@@ -107,8 +109,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     marginBottom: 10,
   },
-  logoX: {color: '#fff', fontSize: 32, fontWeight: '900'},
-  appName: {fontSize: 24, fontWeight: '900', color: '#1A237E'},
+  logoIcon: {color: '#fff', fontSize: 14, fontWeight: '900', letterSpacing: 1},
+  appName: {fontSize: 22, fontWeight: '900', color: '#1A237E'},
   version: {fontSize: 13, color: '#999', marginTop: 2},
   card: {
     backgroundColor: '#fff',

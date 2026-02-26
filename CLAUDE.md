@@ -34,19 +34,18 @@ npx tsc --noEmit --skipLibCheck
 
 ## Architecture Overview
 
-This is a React Native KYC (Know Your Customer) app that reads NFC e-Passports following the **ICAO 9303** standard. It performs identity verification through passport chip reading, liveness detection, and face matching.
+This is a React Native NFC e-Passport reader that follows the **ICAO 9303** standard. It performs passport chip reading via BAC authentication and extracts/verifies Data Groups and the Document Security Object.
 
-### KYC Pipeline Flow
+### Scan Pipeline Flow
 
 ```
-HomeScreen → ConsentScreen → MRZScannerScreen → NFCScanScreen → SelfieScreen → KYCResultScreen
+HomeScreen → ConsentScreen → MRZScannerScreen → NFCScanScreen → PassportResultScreen
 ```
 
-1. **Consent** — GDPR privacy acceptance
+1. **Consent** — Terms & Conditions acceptance
 2. **MRZ Scan** — Camera OCR or manual entry of passport machine-readable zone
 3. **NFC Read** — BAC authentication → Secure Messaging → Read DG1/DG2/SOD from chip
-4. **Selfie** — Liveness detection + face matching (passport photo vs live selfie)
-5. **Decision** — Multi-factor KYC result (VERIFIED / REJECTED)
+4. **Result** — Passport data display, SOD verification, chip auth status, export
 
 ### Service Layer (`src/services/`)
 
@@ -55,9 +54,8 @@ HomeScreen → ConsentScreen → MRZScannerScreen → NFCScanScreen → SelfieSc
 | **PassportCrypto.ts** | ICAO 9303 cryptography: BAC key derivation (SHA-1 → 3DES), Secure Messaging APDU wrap/unwrap, ISO 9797-1 Retail MAC |
 | **PassportNFCService.ts** | NFC chip communication: SELECT eMRTD app, BAC mutual auth, read DG1 (personal data), DG2 (face image), SOD (signatures) via 224-byte chunked reads |
 | **MRZParser.ts** | Parse TD3 (passport, 2×44 chars) and TD1 (ID card, 3×30 chars) formats, ICAO check digit validation, BAC key material computation |
-| **LivenessService.ts** | Liveness detection + face matching API integration. **Currently in DEMO_MODE** (`DEMO_MODE = true`) — returns mock pass results. Set to `false` and configure API_KEY for production. |
-| **KYCDecisionService.ts** | Final multi-factor decision: passport auth + liveness + face match. Builds audit records. |
-| **SessionService.ts** | KYC session lifecycle tracking with audit logging |
+| **SessionService.ts** | NFC session lifecycle tracking with audit logging. Session IDs prefixed `NFC_`. |
+| **PDFExportService.ts** | Generates passport scan reports as PDF (passport data, security checks, audit trail). |
 | **NFCService.ts** | Legacy simplified NFC service (plain APDU, no Secure Messaging) |
 
 ### Key Technical Details
@@ -78,9 +76,9 @@ HomeScreen → ConsentScreen → MRZScannerScreen → NFCScanScreen → SelfieSc
 
 ### Type System (`src/types/`)
 
-- `kyc.ts` — Core KYC types: `MRZScanResult`, `PassportChipData`, `KYCSession`, `KYCDecision`, `LivenessResult`, `FaceMatchResult`, `AuditLog`
+- `kyc.ts` — Core types: `MRZScanResult`, `PassportChipData`, `NFCSession`, `PassportScanResult`, `AuditLog`
 - `nfc.ts` — Legacy NFC types: `MRZData`, `NFCReadResult`
 
 ### Navigation
 
-React Navigation native-stack with 10 screens. The main KYC flow uses `headerShown: false` on ConsentScreen to prevent back navigation after consent.
+React Navigation native-stack with 9 screens. The NFC pipeline uses `headerBackVisible: false` on ConsentScreen, NFCScanScreen, and PassportResultScreen.
