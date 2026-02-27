@@ -126,8 +126,8 @@ The app reads, verifies, and displays the chip data with a **SUCCESS** or **FAIL
 
 | Service | File | Responsibility |
 |---------|------|---------------|
-| **PassportCrypto** | `PassportCrypto.ts` | ICAO 9303 cryptography: BAC key derivation (SHA-1 → 3DES), Secure Messaging APDU wrap/unwrap, ISO 9797-1 Retail MAC |
-| **PassportNFCService** | `PassportNFCService.ts` | NFC chip communication: SELECT eMRTD app, BAC mutual authentication, read DG1/DG2/SOD via 224-byte chunked reads |
+| **PassportCrypto** | `PassportCrypto.ts` | ICAO 9303 cryptography: BAC key derivation (SHA-1 → 3DES), Secure Messaging APDU wrap/unwrap, ISO 9797-1 Retail MAC, Passive Authentication (ASN.1/CMS SOD parsing, DG hash verification) |
+| **PassportNFCService** | `PassportNFCService.ts` | NFC chip communication: SELECT eMRTD app, BAC mutual authentication, read DG1/DG2/DG14/SOD via 224-byte chunked reads, invoke Passive Authentication |
 | **MRZParser** | `MRZParser.ts` | Parse TD3 (passport) and TD1 (ID card) MRZ formats, ICAO check digit validation, BAC key material computation |
 | **SessionService** | `SessionService.ts` | Session lifecycle: session creation, consent recording, status tracking (`SUCCESS`/`FAILED`), audit logging. Session IDs prefixed `NFC_` |
 | **PDFExportService** | `PDFExportService.ts` | Generate and share passport scan report (personal info, security checks, audit trail) via native share sheet |
@@ -158,7 +158,8 @@ The app reads, verifies, and displays the chip data with a **SUCCESS** or **FAIL
 │ │ 3b. BAC Mutual Authentication (3DES key exchange)       │  │
 │ │ 3c. Read DG1 — Personal Data (via Secure Messaging)     │  │
 │ │ 3d. Read DG2 — Face Image JPEG (via Secure Messaging)   │  │
-│ │ 3e. Read SOD — Digital Signatures (via Secure Messaging) │  │
+│ │ 3e. Read SOD — Digital Signatures (via Secure Messaging)  │  │
+│ │ 3f. Passive Authentication — DG1 hash verified vs SOD     │  │
 │ └─────────────────────────────────────────────────────────┘  │
 │ All communication after BAC is encrypted with 3DES           │
 └─────────────────────┬────────────────────────────────────────┘
@@ -191,11 +192,12 @@ The entire application was designed and developed using **Claude AI (Anthropic)*
 
 | Standard | Area | Usage |
 |----------|------|-------|
-| **ICAO 9303** | Passport specification | MRZ format (TD1/TD3), check digits, data groups, BAC protocol |
+| **ICAO 9303** | Passport specification | MRZ format (TD1/TD3), check digits, data groups, BAC protocol, Passive Authentication |
 | **ISO 14443-4** | NFC communication | IsoDep technology for e-MRTD chip access |
 | **ISO 7816-4** | Smart card commands | APDU command/response format (CLA, INS, P1, P2, Lc, Le) |
 | **ISO 9797-1** | Message authentication | Retail MAC (Algorithm 3) with DES/3DES |
 | **ISO 19794-5** | Biometric data | Face image format in DG2 (JPEG/JPEG2000) |
+| **CMS / ASN.1 DER** | Cryptographic syntax | SOD (Security Object Document) parsing for Passive Authentication |
 
 ### Software Design Patterns
 
@@ -269,7 +271,8 @@ Wrapped APDU: [0C B0 00 00 Lc  87 xx {encrypted data}  97 01 E0  8E 08 {MAC}  00
 |-------|---------|------|--------|
 | **DG1** | Personal data (MRZ) | ~200 bytes | TLV: tag 0x5F1F contains 88-char MRZ string |
 | **DG2** | Face photograph | 5–50 KB | JPEG or JPEG2000 inside TLV structure |
-| **SOD** | Digital signatures | 1–5 KB | CMS SignedData (ASN.1/DER) with hash of all DGs |
+| **DG14** | Chip Authentication info | ~100–300 bytes | ASN.1 SecurityInfos — EC public key for CA |
+| **SOD** | Digital signatures | 1–5 KB | CMS SignedData (ASN.1/DER) — LDSSecurityObject with SHA hashes of all DGs |
 
 Reading uses **224-byte chunks** via READ BINARY commands, reassembled into complete data groups.
 
@@ -290,6 +293,9 @@ All cryptography is implemented in JavaScript using the `crypto-js` library (no 
 | Algorithm | Library Function | Purpose |
 |-----------|-----------------|---------|
 | **SHA-1** | `CryptoJS.SHA1()` | BAC key seed derivation from MRZ material |
+| **SHA-256** | `CryptoJS.SHA256()` | Passive Authentication DG hash verification (modern passports) |
+| **SHA-384** | `CryptoJS.SHA384()` | Passive Authentication DG hash verification (some passports) |
+| **SHA-512** | `CryptoJS.SHA512()` | Passive Authentication DG hash verification (some passports) |
 | **3DES-CBC** | `CryptoJS.TripleDES` | Encrypt/decrypt Secure Messaging data (16-byte 2-key: K1\|\|K2\|\|K1) |
 | **DES-ECB** | `CryptoJS.DES` | Single-DES for Retail MAC inner computation |
 | **ISO 9797-1 Retail MAC** | Custom implementation | Message authentication: CBC-MAC with Ka, final DES-decrypt-encrypt with Kb |
@@ -307,6 +313,68 @@ Key Seed (16 bytes = first 16 bytes of SHA-1 output)
     │
     └── + counter 0x00000002 → SHA-1 → first 16 bytes → adjust parity → ksMac
 ```
+
+### Passive Authentication (PA)
+
+Passive Authentication verifies that the data groups read from the chip match the hashes stored in the SOD. Implemented in `verifyPassiveAuthentication()` in `PassportCrypto.ts`.
+
+```
+SOD (CMS SignedData — ASN.1/DER)
+  └── ContentInfo
+        └── [0] EXPLICIT → SignedData
+              └── encapContentInfo
+                    └── [0] EXPLICIT → OCTET STRING
+                          └── LDSSecurityObject
+                                ├── hashAlgorithm OID  (SHA-1 / SHA-256 / SHA-384 / SHA-512)
+                                └── dataGroupHashValues
+                                      ├── DataGroupHash { DG1 number → hash bytes }
+                                      ├── DataGroupHash { DG2 number → hash bytes }
+                                      └── ...
+```
+
+**Verification steps:**
+
+```
+1. Strip outer EF.SOD tag 0x77 (if present)
+2. Walk ContentInfo → SignedData → encapContentInfo → OCTET STRING
+3. Parse LDSSecurityObject → detect hash algorithm from OID
+4. Compute hash(dg1RawBytes) using detected algorithm
+5. Compare against DG1 hash stored in SOD
+6. sodVerified = true only if hashes match exactly
+```
+
+**OIDs recognised:**
+
+| OID | Algorithm | Hex |
+|-----|-----------|-----|
+| 1.3.14.3.2.26 | SHA-1 | `2b 0e 03 02 1a` |
+| 2.16.840.1.101.3.4.2.1 | SHA-256 | `60 86 48 01 65 03 04 02 01` |
+| 2.16.840.1.101.3.4.2.2 | SHA-384 | `60 86 48 01 65 03 04 02 02` |
+| 2.16.840.1.101.3.4.2.3 | SHA-512 | `60 86 48 01 65 03 04 02 03` |
+
+**What PA proves vs. what it does not:**
+
+| Check | Done | Note |
+|-------|------|------|
+| DG1 bytes match SOD hash | ✅ Yes | Real cryptographic comparison |
+| DG2 bytes match SOD hash | ✅ Yes | If DG2 was read successfully |
+| SOD signed by genuine DSC | ❌ No | Requires Document Signing Certificate |
+| DSC signed by CSCA root | ❌ No | Requires per-country ICAO CSCA certs |
+
+### BAC vs PACE Authentication
+
+| Feature | BAC (implemented) | PACE (not implemented) |
+|---------|-------------------|------------------------|
+| Introduced | Early ICAO 9303 | Later ICAO 9303 update |
+| Security Level | Medium | High |
+| Crypto | 3DES + SHA-1 | AES + AES-CMAC + ECDH |
+| Key Source | MRZ only | MRZ / CAN / PIN |
+| Mutual Authentication | Yes | Yes |
+| Forward Secrecy | No | Yes (ECDH) |
+| DGs accessible | DG1, DG2, SOD, DG14 | All DGs incl. EF.CardSecurity |
+| Used in | Older and most current passports | Modern EU biometric passports |
+
+**Why PACE is not yet implemented:** PACE requires AES-CMAC + ECDH key agreement with `EF.CardAccess` parsing. It is mandatory for Chip Authentication on passports that store the CA key in `EF.CardSecurity` rather than DG14 (e.g. Pakistani NADRA passports).
 
 ### DES Parity Adjustment
 
@@ -390,11 +458,25 @@ Example: Document number "ZN1853251"
 
 ### Authentication Layers
 
-| Layer | What It Proves | How |
-|-------|---------------|-----|
-| **BAC** | Reader has physically seen the passport MRZ | 3DES mutual authentication using MRZ-derived keys |
-| **Secure Messaging** | Communication is encrypted and tamper-proof | Every APDU wrapped with 3DES encryption + Retail MAC |
-| **SOD Verification** | Chip data hasn't been altered | Digital signature from issuing country (structural check) |
+| Layer | What It Proves | How | Status |
+|-------|---------------|-----|--------|
+| **BAC** | Reader has physically seen the passport MRZ | 3DES mutual authentication using MRZ-derived keys | ✅ Implemented |
+| **Secure Messaging** | Communication is encrypted and tamper-proof | Every APDU wrapped with 3DES encryption + Retail MAC | ✅ Implemented |
+| **Passive Authentication (PA)** | DG1 (and DG2) data has not been tampered with | Hash DG1 raw bytes, compare against SOD LDSSecurityObject | ✅ Implemented |
+| **SOD Certificate Chain** | SOD was signed by a genuine government DSC/CSCA | Verify DSC signature + CSCA root cert | ❌ Not implemented (requires ICAO PKD) |
+| **Chip Authentication (CA)** | Chip has not been cloned | ECDH with chip's private EC key (DG14) | ⚠️ N/A — EC key not in DG14 via BAC |
+| **PACE** | Stronger session establishment, forward secrecy | AES-CMAC + ECDH key agreement with EF.CardAccess | ❌ Not implemented |
+
+### Security Level Comparison
+
+| Use Case | BAC | PA (hash) | Cert Chain | CA |
+|----------|-----|-----------|------------|----|
+| Just read data | ✅ | — | — | — |
+| Verify data not tampered | ✅ | ✅ | — | — |
+| Verify issued by real government | ✅ | ✅ | ✅ | — |
+| Verify chip not cloned | ✅ | ✅ | ✅ | ✅ |
+| **This app** | ✅ | ✅ | — | — |
+| **Border control / eGates** | ✅ | ✅ | ✅ | ✅ |
 
 ### Data Protection
 
@@ -534,7 +616,7 @@ The `PDFExportService` generates a human-readable passport scan report and share
 
 - **Scan metadata:** Session ID, timestamp, result (SUCCESS/FAILED)
 - **Personal information:** Name, passport number, nationality, DOB, DOE, sex
-- **Security checks:** BAC authentication status, SOD verification result, chip authentication
+- **Security checks:** BAC authentication status, Passive Authentication result (DG1 hash match), SOD certificate chain status (N/A), chip authentication status
 - **Audit log:** Step-by-step timestamps for each phase of the scan
 
 ### Implementation Notes
@@ -551,11 +633,12 @@ The `PDFExportService` generates a human-readable passport scan report and share
 
 | Feature | Status | Reason |
 |---------|--------|--------|
-| **Chip Authentication (CA)** | Not implemented | Requires ECDH key agreement and extended hardware support |
+| **Chip Authentication (CA)** | N/A via BAC | EC public key stored in EF.CardSecurity (requires PACE); returns N/A gracefully |
+| **PACE Authentication** | Not implemented | Requires AES-CMAC + ECDH; needed for passports that mandate PACE (some EU) |
+| **SOD Certificate Chain** | Not implemented | Full PA (DSC → CSCA chain) requires per-country ICAO PKD root certificates |
 | **Extended Access Control (EAC)** | Not implemented | Requires government-issued CVCA certificates and authorized reader |
 | **DG3 (Fingerprints)** | Cannot read | Protected by EAC, requires government authorization |
-| **DG4 (Iris data)** | Cannot read | Protected by EAC, requires government authorization |
-| **Full PKI Verification (PA)** | Partial only | SOD structural check done; full certificate chain verification needs ICAO CSCA infrastructure |
+| **DG4 (Iris data)** | Cannot read | Protected by EAC, requires government authorization — PACE alone is not sufficient |
 | **Liveness Detection** | Not included | Removed from scope — NFC-only reader |
 | **Face Matching** | Not included | Removed from scope — NFC-only reader |
 | **Backend Audit Submission** | Not implemented | No remote backend; history is in-memory only |
@@ -579,11 +662,12 @@ The `PDFExportService` generates a human-readable passport scan report and share
 
 | Enhancement | Priority | Description |
 |------------|----------|-------------|
-| Full Passive Authentication | High | Implement ICAO CSCA certificate chain verification for SOD |
+| SOD Certificate Chain (full PA) | High | Verify DSC signature + CSCA root cert using ICAO PKD certificate database |
+| PACE Authentication | High | AES-CMAC + ECDH session establishment; enables Chip Authentication on modern passports |
 | Data persistence | High | SQLite or AsyncStorage for session history across app restarts |
 | iOS support | Medium | Test and configure for iOS devices |
 | TD1 (ID card) full flow | Medium | Full UI flow for ID card scanning (3-line MRZ) |
-| Chip Authentication (CA) | Low | ECDH-based chip authentication for stronger security |
+| Chip Authentication (CA) | Medium | Requires PACE to be implemented first (EF.CardSecurity access) |
 | Multi-language support | Low | Arabic, Urdu UI translations |
 | Liveness + face match | Low | Optional future module for identity verification use cases |
 

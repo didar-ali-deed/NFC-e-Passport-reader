@@ -10,6 +10,7 @@ import {
   performBAC,
   wrapAPDU,
   unwrapResponse,
+  verifyPassiveAuthentication,
   type BACSession,
 } from './PassportCrypto';
 import type {MRZScanResult, PassportChipData} from '../types/kyc';
@@ -89,8 +90,10 @@ class PassportNFCService {
 
       // ── Step 4: Read DG2 (face image) ──
       onStep?.('reading_dg2');
+      let dg2RawData: number[] = [];
       try {
         const dg2Data = await this.readDataGroupSM(SELECT_EF_DG2);
+        dg2RawData = dg2Data; // keep raw bytes for Passive Authentication
         if (dg2Data.length > 10) {
           result.faceImageBase64 = this.extractFaceFromDG2(dg2Data);
         }
@@ -99,15 +102,24 @@ class PassportNFCService {
         console.warn('DG2 read failed:', dg2Err?.message);
       }
 
-      // ── Step 5: Read SOD (Security Object Document) ──
+      // ── Step 5: Read SOD + Passive Authentication ──
       onStep?.('reading_sod');
       try {
         const sodData = await this.readDataGroupSM(SELECT_EF_SOD);
         if (sodData.length > 0) {
-          result.sodVerified = this.verifySOD(sodData, dg1Data);
+          const pa = verifyPassiveAuthentication(
+            sodData,
+            dg1Data,
+            dg2RawData.length > 0 ? dg2RawData : null,
+          );
+          result.sodVerified = pa.verified;
+          console.log(
+            `[PA] verified=${pa.verified} alg=${pa.hashAlg} ` +
+            `dg1=${pa.dg1Match} dg2=${pa.dg2Match}`,
+          );
         }
       } catch (sodErr: any) {
-        console.warn('SOD read failed:', sodErr?.message);
+        console.warn('SOD/PA failed:', sodErr?.message);
       }
 
       // ── Step 6: Chip Authentication (CA) via DG14 ECDH ──
@@ -282,21 +294,6 @@ class PassportNFCService {
       return null;
     } catch {
       return null;
-    }
-  }
-
-  /**
-   * Verify SOD (Security Object Document) — Passive Authentication.
-   * Full PKI verification needs ICAO CSCA certificates (out of scope).
-   * We verify that SOD is present and structurally valid.
-   */
-  private verifySOD(sodData: number[], dg1Data: number[]): boolean {
-    try {
-      // SOD should start with tag 0x77 or be a CMS SignedData (tag 0x30)
-      if (sodData[0] !== 0x77 && sodData[0] !== 0x30) return false;
-      return sodData.length > 20 && dg1Data.length > 0;
-    } catch {
-      return false;
     }
   }
 

@@ -158,13 +158,13 @@ const PassportResultScreen: React.FC<Props> = ({navigation, route}) => {
           />
           <CheckResult
             label="Passive Authentication (PA)"
-            passed={result.passportAuthentic}
-            detail="Data group integrity verified via hashes"
+            passed={result.sodVerified}
+            detail="DG1 hash recomputed and matched against SOD"
           />
           <CheckResult
-            label="SOD Signature"
-            passed={result.sodVerified}
-            detail="Document Security Object issuer signature"
+            label="SOD Certificate Chain"
+            passed={null}
+            detail="CSCA root verification not performed (requires per-country certs)"
           />
           <CheckResult
             label="Chip Authentication (CA)"

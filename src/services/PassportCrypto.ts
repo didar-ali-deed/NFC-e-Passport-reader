@@ -156,6 +156,234 @@ function tlvDecLen(data: number[], off: number): {len: number; size: number} {
   return {len: 0, size: 1};
 }
 
+// ── SHA-256 ────────────────────────────────────────────────────────────────
+
+function sha256(data: number[]): number[] {
+  return fromWA(CryptoJS.SHA256(toWA(data)));
+}
+
+// ── ASN.1 parser (for SOD/CMS) ─────────────────────────────────────────────
+
+interface ASN1Node {
+  tag: number;
+  value: number[];
+  totalLength: number;
+}
+
+function asn1Read(data: number[], offset: number): ASN1Node {
+  if (offset >= data.length) throw new Error('ASN1: offset out of bounds');
+  const tag = data[offset];
+  let pos = offset + 1;
+  const lb = data[pos++];
+  let len: number;
+  if      (lb < 0x80)    { len = lb; }
+  else if (lb === 0x81)  { len = data[pos++]; }
+  else if (lb === 0x82)  { len = (data[pos] << 8) | data[pos + 1]; pos += 2; }
+  else if (lb === 0x83)  { len = (data[pos] << 16) | (data[pos+1] << 8) | data[pos+2]; pos += 3; }
+  else throw new Error(`ASN1: unsupported length encoding 0x${lb.toString(16)}`);
+  return { tag, value: data.slice(pos, pos + len), totalLength: pos - offset + len };
+}
+
+function asn1Children(data: number[]): ASN1Node[] {
+  const nodes: ASN1Node[] = [];
+  let offset = 0;
+  while (offset < data.length - 1) {
+    const node = asn1Read(data, offset);
+    nodes.push(node);
+    offset += node.totalLength;
+  }
+  return nodes;
+}
+
+// Hash algorithm OIDs
+const OID_SHA1   = [0x2b, 0x0e, 0x03, 0x02, 0x1a];
+const OID_SHA256 = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01];
+const OID_SHA384 = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02];
+const OID_SHA512 = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03];
+
+function oidEq(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+type HashAlg = 'SHA-1' | 'SHA-256' | 'SHA-384' | 'SHA-512';
+
+function hashData(alg: HashAlg, data: number[]): number[] {
+  switch (alg) {
+    case 'SHA-1':   return sha1(data);
+    case 'SHA-256': return sha256(data);
+    case 'SHA-384': return fromWA(CryptoJS.SHA384(toWA(data)));
+    case 'SHA-512': return fromWA(CryptoJS.SHA512(toWA(data)));
+  }
+}
+
+/**
+ * Walk the CMS SignedData tree to find the OCTET STRING
+ * that contains the raw LDSSecurityObject DER bytes.
+ *
+ * Handles both:
+ *   77 [len] 30 … (EF.SOD DG wrapper)
+ *   30 …         (bare ContentInfo)
+ */
+function extractLDSContent(sodData: number[]): number[] | null {
+  let data = sodData;
+
+  // Strip outer EF.SOD tag 0x77
+  if (data[0] === 0x77) {
+    data = asn1Read(data, 0).value;
+  }
+
+  if (data[0] !== 0x30) return null;
+
+  // ContentInfo: SEQUENCE { OID, [0] EXPLICIT SignedData }
+  const ciKids = asn1Children(asn1Read(data, 0).value);
+  if (ciKids.length < 2) return null;
+
+  // Unwrap [0] EXPLICIT → SignedData SEQUENCE
+  let sdValue: number[];
+  if (ciKids[1].tag === 0xa0) {
+    const a0Kids = asn1Children(ciKids[1].value);
+    if (a0Kids.length === 0) return null;
+    sdValue = a0Kids[0].value;
+  } else if (ciKids[1].tag === 0x30) {
+    sdValue = ciKids[1].value;
+  } else {
+    return null;
+  }
+
+  // SignedData fields — find encapContentInfo (SEQUENCE whose first child is OID)
+  for (const kid of asn1Children(sdValue)) {
+    if (kid.tag !== 0x30) continue;
+    const encapKids = asn1Children(kid.value);
+    if (encapKids.length < 2 || encapKids[0].tag !== 0x06) continue;
+    // Found encapContentInfo — look for [0] EXPLICIT → OCTET STRING
+    for (let j = 1; j < encapKids.length; j++) {
+      if (encapKids[j].tag === 0xa0) {
+        for (const inner of asn1Children(encapKids[j].value)) {
+          if (inner.tag === 0x04) return inner.value;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse LDSSecurityObject:
+ *   SEQUENCE { version, AlgorithmIdentifier, SEQUENCE OF DataGroupHash }
+ * DataGroupHash ::= SEQUENCE { INTEGER (dgNumber), OCTET STRING (hash) }
+ */
+function parseLDSSecObj(data: number[]): { alg: HashAlg | null; hashes: Map<number, number[]> } {
+  const result: { alg: HashAlg | null; hashes: Map<number, number[]> } =
+    { alg: null, hashes: new Map() };
+  try {
+    const top = asn1Read(data, 0);
+    if (top.tag !== 0x30) return result;
+    const fields = asn1Children(top.value);
+    if (fields.length < 3) return result;
+
+    // fields[1] = AlgorithmIdentifier SEQUENCE { OID }
+    if (fields[1].tag === 0x30) {
+      const algKids = asn1Children(fields[1].value);
+      if (algKids.length > 0 && algKids[0].tag === 0x06) {
+        const oid = algKids[0].value;
+        if      (oidEq(oid, OID_SHA1))   result.alg = 'SHA-1';
+        else if (oidEq(oid, OID_SHA256)) result.alg = 'SHA-256';
+        else if (oidEq(oid, OID_SHA384)) result.alg = 'SHA-384';
+        else if (oidEq(oid, OID_SHA512)) result.alg = 'SHA-512';
+      }
+    }
+
+    // fields[2] = SEQUENCE OF DataGroupHash
+    if (fields[2].tag === 0x30) {
+      for (const dg of asn1Children(fields[2].value)) {
+        if (dg.tag !== 0x30) continue;
+        const dgFields = asn1Children(dg.value);
+        if (dgFields.length < 2) continue;
+        if (dgFields[0].tag === 0x02 && dgFields[1].tag === 0x04) {
+          const dgNum = dgFields[0].value[dgFields[0].value.length - 1];
+          result.hashes.set(dgNum, dgFields[1].value);
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn('[PA] LDSSecurityObject parse error:', e?.message);
+  }
+  return result;
+}
+
+// ── Passive Authentication ─────────────────────────────────────────────────
+
+export interface PassiveAuthResult {
+  /** true if DG1 hash in SOD matches the raw bytes read from chip */
+  verified: boolean;
+  /** hash algorithm found in SOD, e.g. "SHA-256" */
+  hashAlg: string | null;
+  dg1Match: boolean;
+  /** null if DG2 was not provided or not in SOD hashes */
+  dg2Match: boolean | null;
+}
+
+/**
+ * Passive Authentication (ICAO 9303 §5.1).
+ *
+ * Verifies that the DG1 bytes read from the chip match the hash stored
+ * inside the SOD (LDSSecurityObject). If raw DG2 bytes are supplied,
+ * DG2 is verified as well.
+ *
+ * Note: full PKI verification (DSC → CSCA chain) is NOT performed here,
+ * as it requires per-country CSCA root certificates.
+ */
+export function verifyPassiveAuthentication(
+  sodData: number[],
+  dg1Data: number[],
+  dg2Data: number[] | null = null,
+): PassiveAuthResult {
+  const result: PassiveAuthResult =
+    { verified: false, hashAlg: null, dg1Match: false, dg2Match: null };
+
+  try {
+    const ldsContent = extractLDSContent(sodData);
+    if (!ldsContent) {
+      console.warn('[PA] Could not extract LDSSecurityObject from SOD');
+      return result;
+    }
+
+    const { alg, hashes } = parseLDSSecObj(ldsContent);
+    result.hashAlg = alg;
+
+    if (!alg) {
+      console.warn('[PA] Unknown hash algorithm in SOD');
+      return result;
+    }
+
+    // Verify DG1 (data group number = 1)
+    const sodDg1 = hashes.get(1);
+    if (sodDg1 && dg1Data.length > 0) {
+      const computed = hashData(alg, dg1Data);
+      result.dg1Match = arrEq(computed, sodDg1);
+      console.log(`[PA] DG1 ${alg} computed : ${computed.map(b => b.toString(16).padStart(2, '0')).join('')}`);
+      console.log(`[PA] DG1 ${alg} in SOD   : ${sodDg1.map(b => b.toString(16).padStart(2, '0')).join('')}`);
+      console.log(`[PA] DG1 match: ${result.dg1Match}`);
+    }
+
+    // Verify DG2 (data group number = 2) if raw bytes provided
+    if (dg2Data && dg2Data.length > 0) {
+      const sodDg2 = hashes.get(2);
+      if (sodDg2) {
+        const computed = hashData(alg, dg2Data);
+        result.dg2Match = arrEq(computed, sodDg2);
+        console.log(`[PA] DG2 match: ${result.dg2Match}`);
+      }
+    }
+
+    result.verified = result.dg1Match;
+  } catch (e: any) {
+    console.warn('[PA] Passive authentication error:', e?.message);
+  }
+
+  return result;
+}
+
 // ── Random bytes ───────────────────────────────────────────────────────────
 
 function randomBytes(n: number): number[] {
