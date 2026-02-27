@@ -1,4 +1,4 @@
-# NFC e-Passport KYC Verification App — Project Documentation
+# NFC e-Passport Reader — Project Documentation
 
 > **Built entirely using Claude AI (Anthropic)**
 > Platform: React Native (Android) | Standard: ICAO 9303 | Language: TypeScript
@@ -10,17 +10,17 @@
 1. [Project Overview](#1-project-overview)
 2. [Technologies Used](#2-technologies-used)
 3. [System Architecture](#3-system-architecture)
-4. [KYC Pipeline Flow](#4-kyc-pipeline-flow)
+4. [Scan Pipeline Flow](#4-scan-pipeline-flow)
 5. [Methodology](#5-methodology)
 6. [NFC Passport Reading — How It Works](#6-nfc-passport-reading--how-it-works)
 7. [Cryptographic Implementation](#7-cryptographic-implementation)
 8. [MRZ Scanning & OCR](#8-mrz-scanning--ocr)
-9. [Liveness Detection & Face Matching](#9-liveness-detection--face-matching)
-10. [Security Model](#10-security-model)
-11. [Data Flow Between Screens](#11-data-flow-between-screens)
-12. [Data Handling & Privacy](#12-data-handling--privacy)
-13. [Android Configuration](#13-android-configuration)
-14. [APDU Commands Reference](#14-apdu-commands-reference)
+9. [Security Model](#9-security-model)
+10. [Data Flow Between Screens](#10-data-flow-between-screens)
+11. [Data Handling & Privacy](#11-data-handling--privacy)
+12. [Android Configuration](#12-android-configuration)
+13. [APDU Commands Reference](#13-apdu-commands-reference)
+14. [PDF Export](#14-pdf-export)
 15. [Limitations](#15-limitations)
 16. [Future Work](#16-future-work)
 
@@ -28,16 +28,17 @@
 
 ## 1. Project Overview
 
-This is a **Know Your Customer (KYC) verification application** that reads NFC-enabled electronic passports (e-Passports) following the **ICAO 9303 international standard**. The app performs multi-factor identity verification through:
+This is an **NFC e-Passport Reader** that reads NFC-enabled electronic passports (e-Passports) following the **ICAO 9303 international standard**. The app performs passport chip reading through:
 
 - **Passport MRZ scanning** (camera OCR or manual entry)
 - **NFC chip reading** with cryptographic authentication (BAC + Secure Messaging)
-- **Liveness detection** (anti-spoofing check on live selfie)
-- **Face matching** (passport chip photo vs live selfie comparison)
+- **Data Group extraction** — personal data (DG1), face image (DG2), digital signatures (SOD)
+- **Scan report export** as a shareable text file
 
-The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all checks passing.
+The app reads, verifies, and displays the chip data with a **SUCCESS** or **FAILED** scan result, and optionally exports a detailed report.
 
-**Target Country:** Pakistan (PAK) e-Passports
+**Target Documents:** ICAO-compliant e-Passports (TD3 format), with TD1 (ID card) parser included
+**App Display Name:** `NFC Passport Reader`
 **App Package:** `com.nfcidcardreader`
 **Min Android:** 7.0 (API 24)
 
@@ -65,7 +66,7 @@ The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all 
 
 | Technology | Version | Purpose |
 |-----------|---------|---------|
-| react-native-vision-camera | 4.7.3 | High-performance camera for MRZ scanning & selfie capture |
+| react-native-vision-camera | 4.7.3 | High-performance camera for MRZ scanning |
 | @react-native-ml-kit/text-recognition | 2.0.0 | Google ML Kit OCR for reading MRZ text |
 
 ### Navigation & UI
@@ -81,7 +82,7 @@ The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all 
 
 | Technology | Version | Purpose |
 |-----------|---------|---------|
-| react-native-fs | 2.20.0 | File system access for base64 photo encoding |
+| react-native-fs | 2.20.0 | File system access for report export |
 
 ### Build & Development
 
@@ -104,20 +105,20 @@ The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all 
 ┌─────────────────────────────────────────────────────────────┐
 │                     PRESENTATION LAYER                       │
 │  HomeScreen → ConsentScreen → MRZScanner → NFCScan →        │
-│  SelfieScreen → KYCResultScreen                             │
+│  PassportResultScreen                                        │
 ├─────────────────────────────────────────────────────────────┤
 │                      SERVICE LAYER                           │
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │  MRZParser    │  │ SessionSvc   │  │ KYCDecisionSvc  │   │
-│  │  (OCR Parse)  │  │ (Lifecycle)  │  │ (Final Ruling)  │   │
+│  │  MRZParser    │  │ SessionSvc   │  │ PDFExportSvc    │   │
+│  │  (OCR Parse)  │  │ (Lifecycle)  │  │ (Report Export) │   │
 │  └──────────────┘  └──────────────┘  └─────────────────┘   │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │ PassportNFC   │  │ PassportCryp │  │ LivenessSvc     │   │
-│  │ (Chip I/O)    │  │ (BAC + SM)   │  │ (Face API)      │   │
-│  └──────────────┘  └──────────────┘  └─────────────────┘   │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │ PassportNFC   │  │ PassportCryp │                         │
+│  │ (Chip I/O)    │  │ (BAC + SM)   │                         │
+│  └──────────────┘  └──────────────┘                         │
 ├─────────────────────────────────────────────────────────────┤
 │                     HARDWARE LAYER                           │
-│  NFC Antenna (IsoDep)  │  Back Camera (OCR)  │  Front Cam   │
+│  NFC Antenna (IsoDep)  │  Back Camera (MRZ OCR)             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -125,27 +126,26 @@ The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all 
 
 | Service | File | Responsibility |
 |---------|------|---------------|
-| **PassportCrypto** | `PassportCrypto.ts` | ICAO 9303 cryptography: BAC key derivation (SHA-1 to 3DES), Secure Messaging APDU wrap/unwrap, ISO 9797-1 Retail MAC |
+| **PassportCrypto** | `PassportCrypto.ts` | ICAO 9303 cryptography: BAC key derivation (SHA-1 → 3DES), Secure Messaging APDU wrap/unwrap, ISO 9797-1 Retail MAC |
 | **PassportNFCService** | `PassportNFCService.ts` | NFC chip communication: SELECT eMRTD app, BAC mutual authentication, read DG1/DG2/SOD via 224-byte chunked reads |
 | **MRZParser** | `MRZParser.ts` | Parse TD3 (passport) and TD1 (ID card) MRZ formats, ICAO check digit validation, BAC key material computation |
-| **LivenessService** | `LivenessService.ts` | Liveness detection + face matching API integration (currently in DEMO_MODE with mock results) |
-| **KYCDecisionService** | `KYCDecisionService.ts` | Multi-factor KYC decision engine: passport auth + liveness + face match. Builds audit records |
-| **SessionService** | `SessionService.ts` | KYC session lifecycle: session creation, consent recording, status tracking, audit logging |
+| **SessionService** | `SessionService.ts` | Session lifecycle: session creation, consent recording, status tracking (`SUCCESS`/`FAILED`), audit logging. Session IDs prefixed `NFC_` |
+| **PDFExportService** | `PDFExportService.ts` | Generate and share passport scan report (personal info, security checks, audit trail) via native share sheet |
 
 ---
 
-## 4. KYC Pipeline Flow
+## 4. Scan Pipeline Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Step 1: CONSENT                                              │
-│ User accepts GDPR privacy terms + data processing consent    │
-│ Session ID generated: KYC_YYYY_MMDD_HHMMSS                  │
+│ User accepts privacy terms + data processing consent         │
+│ Session ID generated: NFC_YYYY_MMDD_HHMMSS                  │
 └─────────────────────┬────────────────────────────────────────┘
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Step 2: MRZ SCANNING                                         │
-│ Camera OCR (ML Kit) or manual entry of 2 x 44-char MRZ lines│
+│ Camera OCR (ML Kit) or manual entry of 2 × 44-char MRZ lines│
 │ OCR character correction: O↔0, I↔1, B↔8, S↔5, Z↔2          │
 │ Check digit validation per ICAO 9303                         │
 │ Extract: passport number, DOB, DOE, name, nationality, sex  │
@@ -164,26 +164,11 @@ The app delivers a final **VERIFIED** or **REJECTED** KYC decision based on all 
 └─────────────────────┬────────────────────────────────────────┘
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ Step 4: SELFIE + LIVENESS DETECTION                          │
-│ Front camera captures live selfie                            │
-│ API checks for blink, texture, depth cues (anti-spoofing)    │
-│ Liveness score must be >= 0.80 to pass                       │
-└─────────────────────┬────────────────────────────────────────┘
-                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 5: FACE MATCHING                                        │
-│ Compare passport chip face (DG2) with live selfie            │
-│ Face similarity score must be >= 0.85 to pass                │
-└─────────────────────┬────────────────────────────────────────┘
-                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 6: KYC DECISION                                         │
-│ ALL THREE must pass:                                         │
-│   ✓ Passport authenticated (BAC + SOD)                       │
-│   ✓ Liveness score >= 0.80                                   │
-│   ✓ Face match score >= 0.85                                 │
-│ Result: VERIFIED or REJECTED with detailed reason             │
-│ Audit log submitted (no raw biometric data stored)           │
+│ Step 4: RESULT & EXPORT                                      │
+│ Display: personal info, face photo, SOD verification status  │
+│ Scan result: SUCCESS or FAILED (with failure reason)         │
+│ Audit log saved to session history                           │
+│ Optional: export scan report via native share sheet          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -200,7 +185,7 @@ The entire application was designed and developed using **Claude AI (Anthropic)*
 - **NFC protocol implementation** — APDU command construction, TLV parsing, chunked data reading
 - **OCR processing** — MRZ extraction from camera frames, character correction algorithms
 - **UI/UX development** — All screens, animations, progress indicators
-- **Debugging** — Real-device testing with Pakistani e-Passports, fixing OCR misreads, date formatting bugs, NFC detection issues
+- **Debugging** — Real-device testing with e-Passports, fixing OCR misreads, date formatting bugs, NFC detection issues
 
 ### Standards Followed
 
@@ -211,16 +196,15 @@ The entire application was designed and developed using **Claude AI (Anthropic)*
 | **ISO 7816-4** | Smart card commands | APDU command/response format (CLA, INS, P1, P2, Lc, Le) |
 | **ISO 9797-1** | Message authentication | Retail MAC (Algorithm 3) with DES/3DES |
 | **ISO 19794-5** | Biometric data | Face image format in DG2 (JPEG/JPEG2000) |
-| **GDPR** | Data protection | Consent collection, no biometric data persistence |
 
 ### Software Design Patterns
 
 - **Service Layer Pattern** — Business logic isolated in singleton services
-- **Screen-based Architecture** — Each KYC step is a separate screen component
+- **Screen-based Architecture** — Each scan step is a separate screen component
 - **Callback Pattern** — NFC progress reporting via `onStep` callbacks
-- **State Machine** — Session status tracks KYC progress (`pending` → `verified`/`rejected`)
+- **State Machine** — Session status tracks progress (`pending` → `SUCCESS`/`FAILED`)
 - **Graceful Degradation** — DG2/SOD read failures don't crash the pipeline
-- **Retry Pattern** — NFC read allows 3 retry attempts
+- **Retry Pattern** — NFC read allows multiple retry attempts
 
 ---
 
@@ -284,10 +268,16 @@ Wrapped APDU: [0C B0 00 00 Lc  87 xx {encrypted data}  97 01 E0  8E 08 {MAC}  00
 | Group | Content | Size | Format |
 |-------|---------|------|--------|
 | **DG1** | Personal data (MRZ) | ~200 bytes | TLV: tag 0x5F1F contains 88-char MRZ string |
-| **DG2** | Face photograph | 5-50 KB | JPEG or JPEG2000 inside TLV structure |
-| **SOD** | Digital signatures | 1-5 KB | CMS SignedData (ASN.1/DER) with hash of all DGs |
+| **DG2** | Face photograph | 5–50 KB | JPEG or JPEG2000 inside TLV structure |
+| **SOD** | Digital signatures | 1–5 KB | CMS SignedData (ASN.1/DER) with hash of all DGs |
 
 Reading uses **224-byte chunks** via READ BINARY commands, reassembled into complete data groups.
+
+### Date Formatting
+
+Year cutoff rule in `PassportNFCService.ts`:
+- `00–50` → 2000s (e.g., `30` → `2030`)
+- `51–99` → 1900s (e.g., `85` → `1985`)
 
 ---
 
@@ -396,46 +386,7 @@ Example: Document number "ZN1853251"
 
 ---
 
-## 9. Liveness Detection & Face Matching
-
-### Current Status: DEMO MODE
-
-The app is currently configured with `DEMO_MODE = true`, which means:
-
-| Check | Real Behavior | Demo Behavior |
-|-------|--------------|---------------|
-| **Liveness Detection** | API call to liveness provider | Returns `passed: true, score: 0.97` after 2-second delay |
-| **Face Matching** | API comparison of two faces | Returns `matched: true, score: 0.93` after 1.5-second delay |
-
-### Production Integration
-
-When `DEMO_MODE = false`, the app connects to a liveness API (designed for Shufti Pro):
-
-**Liveness Detection:**
-- Endpoint: `POST /liveness`
-- Input: Live selfie (base64 JPEG)
-- Checks: Blink detection, skin texture analysis, depth cues, anti-spoofing
-- Pass threshold: Score >= 0.80
-
-**Face Matching:**
-- Endpoint: `POST /face-match`
-- Input: Passport chip photo (DG2) + live selfie (both base64)
-- Checks: Facial landmark comparison, similarity scoring
-- Pass threshold: Score >= 0.85
-
-### Decision Logic
-
-```
-IF passport_authenticated (BAC + SOD passed)
-   AND liveness_score >= 0.80
-   AND face_match_score >= 0.85
-THEN → VERIFIED
-ELSE → REJECTED (with specific failure reasons)
-```
-
----
-
-## 10. Security Model
+## 9. Security Model
 
 ### Authentication Layers
 
@@ -444,29 +395,26 @@ ELSE → REJECTED (with specific failure reasons)
 | **BAC** | Reader has physically seen the passport MRZ | 3DES mutual authentication using MRZ-derived keys |
 | **Secure Messaging** | Communication is encrypted and tamper-proof | Every APDU wrapped with 3DES encryption + Retail MAC |
 | **SOD Verification** | Chip data hasn't been altered | Digital signature from issuing country (structural check) |
-| **Liveness** | A real person is present (not a photo/video) | API-based anti-spoofing analysis |
-| **Face Match** | Person matches passport photo | Facial similarity comparison |
 
 ### Data Protection
 
-- **MRZ data** — Exists only in RAM during NFC session, destroyed after
-- **Session keys** (ksEnc, ksMac) — In RAM only, destroyed when session ends
+- **MRZ data** — Exists only in RAM during NFC session, not persisted
+- **Session keys** (ksEnc, ksMac) — In RAM only, valid only for the active NFC session
 - **Face images** — Base64 in RAM, never written to device storage
-- **Biometric data** — Explicitly NOT stored (GDPR compliance)
-- **Audit logs** — Only scores, timestamps, and pass/fail flags (no raw images)
+- **Audit logs** — Timestamps, session ID, pass/fail flags only (no raw biometric data)
 - **Send Sequence Counter (SSC)** — Incremented per message to prevent replay attacks
 - **Random nonces** — 8-byte RND.ICC + RND.IFD prevent chosen-plaintext attacks
 
 ---
 
-## 11. Data Flow Between Screens
+## 10. Data Flow Between Screens
 
 ```
 HomeScreen
   │  (no data)
   ▼
 ConsentScreen
-  │  Creates: KYCSession {sessionId, timestamp, consentGiven}
+  │  Creates: NFCSession {sessionId: "NFC_...", timestamp, consentGiven}
   │  Passes:  sessionId
   ▼
 MRZScannerScreen
@@ -479,58 +427,49 @@ NFCScanScreen
   │  Creates: PassportChipData {personalInfo, faceImageBase64, isAuthenticated, sodVerified}
   │  Passes:  passportData + sessionId
   ▼
-SelfieScreen
+PassportResultScreen
   │  Input:   passportData + sessionId
-  │  Creates: LivenessResult {passed, score, provider}
-  │           FaceMatchResult {matched, score, threshold}
-  │           selfieBase64
-  │  Passes:  all above + sessionId
-  ▼
-KYCResultScreen
-  │  Input:   passportData + livenessResult + faceMatchResult + selfieBase64 + sessionId
-  │  Creates: KYCDecision {finalStatus: VERIFIED|REJECTED, reason}
-  │           AuditRecord (no raw images, only scores)
-  │  Submits: audit log to backend
-  │  Destroys: session on "Start New KYC"
+  │  Creates: PassportScanResult {status: SUCCESS|FAILED, reason}
+  │           AuditLog (timestamps, chip auth status, SOD result)
+  │  Action:  Export scan report via native share sheet
+  │  Action:  View session history
   ▼
 HomeScreen (loop)
 ```
 
 ---
 
-## 12. Data Handling & Privacy
+## 11. Data Handling & Privacy
 
 ### What Data Is Collected
 
-| Data | Collected | Stored on Device | Sent to Backend |
-|------|----------|-----------------|----------------|
+| Data | Collected | Stored on Device | Shared Externally |
+|------|----------|-----------------|------------------|
 | MRZ text (passport number, dates, name) | Yes | No (RAM only) | No |
 | Passport chip photo (DG2) | Yes | No (RAM only) | No |
-| Live selfie | Yes | No (RAM only) | No |
-| Liveness score | Yes | No (RAM only) | Yes (score only) |
-| Face match score | Yes | No (RAM only) | Yes (score only) |
-| KYC decision (VERIFIED/REJECTED) | Yes | No (RAM only) | Yes |
-| Audit timestamps | Yes | No (RAM only) | Yes |
+| Scan result (SUCCESS/FAILED) | Yes | Session history | Export only (user-initiated) |
+| Audit timestamps | Yes | Session history | Export only (user-initiated) |
+| SOD / chip auth status | Yes | Session history | Export only (user-initiated) |
 
 ### Privacy Design
 
-- **No raw biometric data is ever stored** on the device or sent to the backend
-- Only verification scores and pass/fail results are included in audit logs
-- Session data is destroyed when the user completes or restarts KYC
-- User must provide explicit GDPR consent before any data processing begins
+- **No raw biometric data is ever stored** on the device or sent externally without user action
+- Only pass/fail flags and timestamps are kept in session history
+- Session data is cleared when the user starts a new scan
+- User must provide explicit consent before any data processing begins
 - All NFC communication is encrypted after BAC (cannot be intercepted wirelessly)
+- Report export is entirely user-initiated via the native OS share sheet
 
 ---
 
-## 13. Android Configuration
+## 12. Android Configuration
 
 ### Permissions Required
 
 | Permission | Purpose |
 |-----------|---------|
 | `android.permission.NFC` | Read passport NFC chip |
-| `android.permission.CAMERA` | MRZ scanning + selfie capture |
-| `android.permission.INTERNET` | Backend API communication |
+| `android.permission.CAMERA` | MRZ scanning |
 | `android.permission.VIBRATE` | Haptic feedback on NFC events |
 | `android.permission.FOREGROUND_SERVICE` | Long-running NFC operations (Android 14+) |
 
@@ -540,7 +479,6 @@ HomeScreen (loop)
 |---------|---------|---------|
 | NFC | Yes | Passport chip reading |
 | Back camera | Yes | MRZ scanning |
-| Front camera | Yes | Selfie capture |
 | Autofocus | Recommended | Better OCR accuracy |
 
 ### NFC Technology Filters
@@ -555,7 +493,7 @@ The app responds to these NFC technologies:
 
 ---
 
-## 14. APDU Commands Reference
+## 13. APDU Commands Reference
 
 ### Command Format
 
@@ -588,6 +526,25 @@ A successful response ends with status word `90 00`. Any other status word indic
 
 ---
 
+## 14. PDF Export
+
+The `PDFExportService` generates a human-readable passport scan report and shares it via the native OS share sheet. No external storage permissions are required.
+
+### Report Contents
+
+- **Scan metadata:** Session ID, timestamp, result (SUCCESS/FAILED)
+- **Personal information:** Name, passport number, nationality, DOB, DOE, sex
+- **Security checks:** BAC authentication status, SOD verification result, chip authentication
+- **Audit log:** Step-by-step timestamps for each phase of the scan
+
+### Implementation Notes
+
+- File saved to app's private Documents directory (`RNFS.DocumentDirectoryPath`)
+- Shared as plain text via `react-native`'s `Share` API (no FileProvider or external permissions needed)
+- File name format: `PassportScan_NFC_YYYYMMDD_HHMMSS.txt`
+
+---
+
 ## 15. Limitations
 
 ### Not Implemented
@@ -599,22 +556,21 @@ A successful response ends with status word `90 00`. Any other status word indic
 | **DG3 (Fingerprints)** | Cannot read | Protected by EAC, requires government authorization |
 | **DG4 (Iris data)** | Cannot read | Protected by EAC, requires government authorization |
 | **Full PKI Verification (PA)** | Partial only | SOD structural check done; full certificate chain verification needs ICAO CSCA infrastructure |
-| **Liveness Detection** | Demo mode (mocked) | Requires production API key (Shufti Pro / Sumsub) |
-| **Face Matching** | Demo mode (mocked) | Requires production API key |
-| **Backend Audit Submission** | Logs to console | Production backend endpoint needed |
+| **Liveness Detection** | Not included | Removed from scope — NFC-only reader |
+| **Face Matching** | Not included | Removed from scope — NFC-only reader |
+| **Backend Audit Submission** | Not implemented | No remote backend; history is in-memory only |
 | **iOS Support** | Not tested | Android-only configuration and testing |
-| **Offline Mode** | Not supported | Liveness/face match require internet |
-| **Multi-document Support** | TD3 (passport) only | TD1 (ID card) parser exists but not fully integrated |
-| **Data Persistence** | None (all in-memory) | No local database; session lost on app restart |
+| **TD1 (ID card) full flow** | Parser only | TD1 MRZ parser exists but scan UI targets TD3 (passport) |
+| **Data Persistence** | None (all in-memory) | No local database; session history lost on app restart |
 
 ### Known Constraints
 
 | Constraint | Impact | Mitigation |
 |-----------|--------|------------|
-| **224-byte NFC read chunks** | DG2 (face photo) reading is slow (5-50KB) | Graceful timeout handling, continue without DG2 if it fails |
+| **224-byte NFC read chunks** | DG2 (face photo) reading is slow (5–50 KB) | Graceful timeout handling; continue without DG2 if it fails |
 | **crypto-js performance** | JavaScript 3DES is slower than native | Acceptable for passport reading (few KB of data) |
 | **OCR accuracy** | ML Kit may misread MRZ characters | Position-aware character correction algorithm applied |
-| **NFC chip position varies** | User must find the right spot on passport | Diagram guide + retry mechanism (3 attempts) |
+| **NFC chip position varies** | User must find the right spot on passport | Diagram guide + retry mechanism |
 | **Some passport chips timeout** | Older or damaged chips may not respond | Graceful error handling, optional data groups skipped |
 
 ---
@@ -623,15 +579,14 @@ A successful response ends with status word `90 00`. Any other status word indic
 
 | Enhancement | Priority | Description |
 |------------|----------|-------------|
-| Production liveness API | High | Replace DEMO_MODE with real Shufti Pro / Sumsub integration |
 | Full Passive Authentication | High | Implement ICAO CSCA certificate chain verification for SOD |
-| Backend integration | High | Real audit log submission endpoint |
+| Data persistence | High | SQLite or AsyncStorage for session history across app restarts |
 | iOS support | Medium | Test and configure for iOS devices |
-| TD1 (ID card) flow | Medium | Full UI flow for ID card scanning (3-line MRZ) |
+| TD1 (ID card) full flow | Medium | Full UI flow for ID card scanning (3-line MRZ) |
 | Chip Authentication (CA) | Low | ECDH-based chip authentication for stronger security |
-| Offline caching | Low | Queue audit logs when offline, submit when reconnected |
 | Multi-language support | Low | Arabic, Urdu UI translations |
+| Liveness + face match | Low | Optional future module for identity verification use cases |
 
 ---
 
-*This document was generated as part of the NFC e-Passport KYC Verification App project, built entirely using Claude AI (Anthropic).*
+*This document was generated as part of the NFC e-Passport Reader project, built entirely using Claude AI (Anthropic).*

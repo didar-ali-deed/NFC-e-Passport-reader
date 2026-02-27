@@ -169,7 +169,11 @@ const PassportResultScreen: React.FC<Props> = ({navigation, route}) => {
           <CheckResult
             label="Chip Authentication (CA)"
             passed={result.chipAuthDone}
-            detail="ECDH key exchange proves chip holds genuine private key"
+            detail={
+              result.chipAuthDone === null
+                ? 'EC key not in DG14 — requires PACE (not available via BAC)'
+                : 'ECDH key exchange proves chip holds genuine private key'
+            }
           />
         </View>
 
@@ -255,24 +259,27 @@ const Row: React.FC<{label: string; value: string; mono?: boolean}> = ({label, v
   </View>
 );
 
-const CheckResult: React.FC<{label: string; passed: boolean; detail?: string}> = ({
+const CheckResult: React.FC<{label: string; passed: boolean | null; detail?: string}> = ({
   label,
   passed,
   detail,
-}) => (
-  <View style={styles.checkRow}>
-    <Text style={[styles.checkIcon, passed ? styles.checkPass : styles.checkFail]}>
-      {passed ? '✓' : '✗'}
-    </Text>
-    <View style={styles.checkInfo}>
-      <Text style={styles.checkLabel}>{label}</Text>
-      {detail && <Text style={styles.checkDetail}>{detail}</Text>}
+}) => {
+  const isNA = passed === null;
+  return (
+    <View style={styles.checkRow}>
+      <Text style={[styles.checkIcon, isNA ? styles.checkNA : passed ? styles.checkPass : styles.checkFail]}>
+        {isNA ? '—' : passed ? '✓' : '✗'}
+      </Text>
+      <View style={styles.checkInfo}>
+        <Text style={styles.checkLabel}>{label}</Text>
+        {detail && <Text style={styles.checkDetail}>{detail}</Text>}
+      </View>
+      <Text style={[styles.checkStatus, isNA ? styles.checkNA : passed ? styles.checkPass : styles.checkFail]}>
+        {isNA ? 'N/A' : passed ? 'PASS' : 'FAIL'}
+      </Text>
     </View>
-    <Text style={[styles.checkStatus, passed ? styles.checkPass : styles.checkFail]}>
-      {passed ? 'PASS' : 'FAIL'}
-    </Text>
-  </View>
-);
+  );
+};
 
 
 const styles = StyleSheet.create({
@@ -351,6 +358,7 @@ const styles = StyleSheet.create({
   checkStatus: {fontSize: 12, fontWeight: '700'},
   checkPass: {color: '#4CAF50'},
   checkFail: {color: '#F44336'},
+  checkNA:   {color: '#9E9E9E'},
 
   auditRow: {
     flexDirection: 'row',

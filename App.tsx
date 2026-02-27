@@ -4,12 +4,8 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
-// Main screens
+// Main screen
 import HomeScreen from './src/screens/HomeScreen';
-import MRZInputScreen from './src/screens/MRZInputScreen';
-import ScanCardScreen from './src/screens/ScanCardScreen';
-import ResultScreen from './src/screens/ResultScreen';
-import QuickScanScreen from './src/screens/QuickScanScreen';
 
 // NFC pipeline screens
 import ConsentScreen from './src/screens/ConsentScreen';
@@ -65,28 +61,6 @@ function App() {
             name="PassportResult"
             component={PassportResultScreen}
             options={{title: 'Passport Data', headerBackVisible: false}}
-          />
-
-          {/* Quick Tools */}
-          <Stack.Screen
-            name="MRZInput"
-            component={MRZInputScreen}
-            options={{title: 'Enter MRZ Data'}}
-          />
-          <Stack.Screen
-            name="ScanCard"
-            component={ScanCardScreen}
-            options={{title: 'Scanning...', headerBackVisible: false}}
-          />
-          <Stack.Screen
-            name="Result"
-            component={ResultScreen}
-            options={{title: 'Scan Result', headerBackVisible: false}}
-          />
-          <Stack.Screen
-            name="QuickScan"
-            component={QuickScanScreen}
-            options={{title: 'Quick NFC Scan'}}
           />
 
           {/* Utility Screens */}

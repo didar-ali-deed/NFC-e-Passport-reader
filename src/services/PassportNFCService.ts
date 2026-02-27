@@ -360,12 +360,22 @@ class PassportNFCService {
 
   /**
    * Scan DG14 SecurityInfos for an EC public key in SubjectPublicKeyInfo.
-   * The uncompressed EC point is inside a BIT STRING: 03 [len] 00 04 [x][y].
+   * BIT STRING format: 03 [len] 00 04 [x][y]  (uncompressed EC point).
    * P-256 → 65 bytes, P-384 → 97 bytes, P-521 → 133 bytes.
+   * Handles short (1-byte), 0x81, and 0x82 BIT STRING length encodings.
    */
   private parseECPublicKeyFromDG14(data: number[]): number[] | null {
+    // Dump raw DG14 for diagnostics (first 160 bytes)
+    const hex = data
+      .slice(0, 160)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ');
+    console.log(`[CA] DG14 (${data.length}B): ${hex}${data.length > 160 ? '…' : ''}`);
+
     for (let i = 0; i < data.length - 4; i++) {
-      if (data[i] !== 0x03) continue;
+      if (data[i] !== 0x03) continue; // BIT STRING tag
+
+      // Parse length — support short form, 0x81, and 0x82
       const lb = data[i + 1];
       let len: number;
       let skip: number;
@@ -375,53 +385,115 @@ class PassportNFCService {
       } else if (lb === 0x81) {
         len = data[i + 2] ?? 0;
         skip = 3;
+      } else if (lb === 0x82) {
+        len = ((data[i + 2] ?? 0) << 8) | (data[i + 3] ?? 0);
+        skip = 4;
       } else {
         continue;
       }
+
       const start = i + skip;
-      if (start + len > data.length) continue;
-      // BIT STRING content: 00 04 [point bytes]
-      if (data[start] !== 0x00 || data[start + 1] !== 0x04) continue;
-      const pointLen = len - 1; // subtract the unused-bits byte (0x00)
-      if (pointLen === 65 || pointLen === 97 || pointLen === 133) {
-        return data.slice(start + 1, start + 1 + pointLen); // 04 [x][y]
+      if (start + len > data.length || len < 2) continue;
+      if (data[start] !== 0x00) continue; // unused-bits byte must be 0
+
+      const pointByte = data[start + 1];
+      const pointLen = len - 1; // subtract unused-bits byte
+
+      // Uncompressed EC point (04 prefix) — what we need for Web Crypto ECDH
+      if (pointByte === 0x04) {
+        if (pointLen === 65 || pointLen === 97 || pointLen === 133) {
+          const curve =
+            pointLen === 65 ? 'P-256' : pointLen === 97 ? 'P-384' : 'P-521';
+          console.log(`[CA] Found uncompressed EC point: ${curve} (${pointLen}B)`);
+          return data.slice(start + 1, start + 1 + pointLen);
+        }
+        console.log(`[CA] BIT STRING has 04-prefix but unexpected length ${pointLen} — skipping`);
+        continue;
+      }
+
+      // Compressed EC point (02/03 prefix) — Web Crypto ECDH cannot use these directly
+      if (pointByte === 0x02 || pointByte === 0x03) {
+        if (pointLen === 33 || pointLen === 49 || pointLen === 67) {
+          console.warn(
+            `[CA] Chip uses compressed EC point (${pointLen}B) — ` +
+            'Web Crypto requires uncompressed points. Install react-native-quick-crypto for decompression support.',
+          );
+        }
+        continue;
+      }
+
+      // BIT STRING starts with 0x02 INTEGER tag → DH (not ECDH) key
+      if (pointByte === 0x02) {
+        console.warn(
+          '[CA] DG14 contains a DH (Diffie-Hellman) public key, not ECDH. ' +
+          'Web Crypto does not support raw DH. DH-based CA is not implemented.',
+        );
       }
     }
+
     return null;
   }
 
   /**
-   * Chip Authentication (ICAO 9303 Part 11 §6.1):
-   * 1. Read DG14 → chip's ECDH public key
-   * 2. Generate ephemeral key pair via Web Crypto
+   * Chip Authentication (ICAO 9303 Part 11 §6.1) via ECDH:
+   * 1. Read DG14 → parse chip's EC public key
+   * 2. Generate ephemeral ECDH key pair via Web Crypto (Hermes RN ≥ 0.73)
    * 3. Send GENERAL AUTHENTICATE with our ephemeral public key
-   * 4. SW=9000 → chip holds the matching private key → authentic
+   * 4. SW=9000 → chip holds the matching private key → chip is genuine
+   *
+   * Returns:
+   *   true  — CA completed successfully
+   *   false — CA attempted but chip rejected it
+   *   null  — CA not available (DG14 has no EC public key; requires PACE)
+   *
+   * Pakistani NADRA passports advertise CA in DG14 but store the EC public key
+   * in EF.CardSecurity, which is only accessible after PACE (not BAC).
+   * In that case we return null so the UI shows "N/A" instead of "FAIL".
    */
-  private async performChipAuthentication(): Promise<boolean> {
+  private async performChipAuthentication(): Promise<boolean | null> {
     try {
+      // ── 1. Read DG14 ──────────────────────────────────────────────────────
       const dg14Data = await this.readDataGroupSM(SELECT_EF_DG14);
-      if (dg14Data.length < 10) return false;
+      if (dg14Data.length < 10) {
+        console.log('[CA] DG14 absent — chip does not support CA');
+        return null;
+      }
 
+      // ── 2. Extract chip EC public key ─────────────────────────────────────
       const chipPubKeyBytes = this.parseECPublicKeyFromDG14(dg14Data);
       if (!chipPubKeyBytes) {
-        console.warn('[CA] No EC public key found in DG14');
-        return false;
+        // DG14 exists but contains no EC public key — chip advertises CA but
+        // the key is stored in EF.CardSecurity (requires PACE to access).
+        console.log('[CA] DG14 has CA protocol info but no EC public key — PACE required');
+        return null;
       }
 
-      // Determine curve from key length
       const namedCurve =
-        chipPubKeyBytes.length === 65 ? 'P-256' :
-        chipPubKeyBytes.length === 97 ? 'P-384' :
+        chipPubKeyBytes.length === 65  ? 'P-256' :
+        chipPubKeyBytes.length === 97  ? 'P-384' :
         chipPubKeyBytes.length === 133 ? 'P-521' : null;
-      if (!namedCurve) return false;
-
-      const subtle = (globalThis as any).crypto?.subtle;
-      if (!subtle) {
-        console.warn('[CA] Web Crypto not available');
+      if (!namedCurve) {
+        console.warn('[CA] Unrecognised EC key size:', chipPubKeyBytes.length);
         return false;
       }
 
-      // Import chip's public key
+      // ── 3. Check Web Crypto availability ──────────────────────────────────
+      // crypto.subtle is available in Hermes on RN ≥ 0.73.
+      // If absent, install react-native-quick-crypto and add its shim to index.js.
+      const subtle: any =
+        (globalThis as any).crypto?.subtle ??
+        (globalThis as any).nativeCrypto?.subtle;
+
+      if (!subtle) {
+        console.warn(
+          '[CA] crypto.subtle not available in this runtime.\n' +
+          'Fix: npm install react-native-quick-crypto\n' +
+          'Then add: import "react-native-quick-crypto/shim"  at the top of index.js',
+        );
+        return null; // can't attempt CA without crypto
+      }
+
+      // ── 4. Import chip public key ─────────────────────────────────────────
       await subtle.importKey(
         'raw',
         new Uint8Array(chipPubKeyBytes),
@@ -430,32 +502,38 @@ class PassportNFCService {
         [],
       );
 
-      // Generate our ephemeral key pair
+      // ── 5. Generate our ephemeral key pair ───────────────────────────────
       const ephemeral = await subtle.generateKey(
         {name: 'ECDH', namedCurve},
         true,
         ['deriveBits'],
       );
 
-      // Export our ephemeral public key as raw bytes
+      // ── 6. Export ephemeral public key (uncompressed point) ───────────────
       const pkTRaw = await subtle.exportKey('raw', ephemeral.publicKey);
       const pkT = Array.from(new Uint8Array(pkTRaw as ArrayBuffer));
 
-      // Build GENERAL AUTHENTICATE APDU:
-      // 7C [len] 80 [len] [pkT]   (Dynamic Authentication Data object)
+      // ── 7. Send GENERAL AUTHENTICATE ─────────────────────────────────────
+      // TLV: 7C [len] 80 [len] [ephemeral_pubkey]
       const encLen = (n: number): number[] =>
-        n < 0x80 ? [n] :
+        n < 0x80  ? [n] :
         n < 0x100 ? [0x81, n] :
-        [0x82, (n >> 8) & 0xff, n & 0xff];
+                    [0x82, (n >> 8) & 0xff, n & 0xff];
 
-      const inner = [0x80, ...encLen(pkT.length), ...pkT];
-      const outer = [0x7c, ...encLen(inner.length), ...inner];
+      const inner  = [0x80, ...encLen(pkT.length), ...pkT];
+      const outer  = [0x7c, ...encLen(inner.length), ...inner];
       const gaApdu = [0x00, 0x86, 0x00, 0x00, ...encLen(outer.length), ...outer, 0x00];
 
       const gaResp = await this.transceiveSM(gaApdu);
-      return gaResp.sw[0] === 0x90 && gaResp.sw[1] === 0x00;
+      const success = gaResp.sw[0] === 0x90 && gaResp.sw[1] === 0x00;
+      if (!success) {
+        console.warn(
+          `[CA] GENERAL AUTHENTICATE rejected: SW=${gaResp.sw.map(b => b.toString(16).padStart(2,'0')).join('')}`,
+        );
+      }
+      return success;
     } catch (err: any) {
-      console.warn('[CA]', err?.message);
+      console.warn('[CA] Exception:', err?.message ?? err);
       return false;
     }
   }

@@ -9,7 +9,7 @@ import {
   AppState,
 } from 'react-native';
 import {useIsFocused} from '@react-navigation/core';
-import NFCService from '../services/NFCService';
+import NfcManager from 'react-native-nfc-manager';
 
 interface HomeScreenProps {
   navigation: any;
@@ -22,11 +22,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
 
   const checkNFC = useCallback(async () => {
     try {
-      const supported = await NFCService.init();
+      const supported = await NfcManager.isSupported();
       setNfcSupported(supported);
       if (supported) {
+        await NfcManager.start();
         await new Promise<void>(r => setTimeout(r, 300));
-        const enabled = await NFCService.isEnabled();
+        const enabled = await NfcManager.isEnabled();
         setNfcEnabled(enabled);
       }
     } catch {
@@ -54,7 +55,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
     if (!nfcEnabled) {
       Alert.alert('NFC Disabled', 'Please enable NFC in your device settings.', [
         {text: 'Cancel', style: 'cancel'},
-        {text: 'Open Settings', onPress: () => NFCService.goToNfcSettings()},
+        {text: 'Open Settings', onPress: () => NfcManager.goToNfcSetting()},
       ]);
       return;
     }
@@ -139,17 +140,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
       <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
-          onPress={() => requireNFC(() => navigation.navigate('QuickScan'))}
-          disabled={!nfcSupported}>
-          <View style={[styles.quickIcon, {backgroundColor: '#0D47A1'}]}>
-            <Text style={styles.quickIconText}>N</Text>
-          </View>
-          <Text style={styles.quickTitle}>NFC Tag Scan</Text>
-          <Text style={styles.quickSub}>Read any NFC tag UID</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickCard}
           onPress={() => navigation.navigate('Dashboard')}>
           <View style={[styles.quickIcon, {backgroundColor: '#E65100'}]}>
             <Text style={styles.quickIconText}>D</Text>
@@ -157,9 +147,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({navigation}) => {
           <Text style={styles.quickTitle}>Dashboard</Text>
           <Text style={styles.quickSub}>Stats & analytics</Text>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.quickGrid}>
         <TouchableOpacity
           style={styles.quickCard}
           onPress={() => navigation.navigate('History')}>
